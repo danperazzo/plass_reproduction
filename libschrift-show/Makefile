@@ -1,9 +1,7 @@
 # show text using libschrift
 
 # default args; paths for macOS
-F= /System/Library/Fonts/NewYork.ttf
-F= /System/Library/Fonts/NewYorkItalic.ttf
-F= /System/Library/Fonts/Supplemental/Times New Roman Italic.ttf
+F=/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf
 S= 500
 M= Hello from\nlibschrift!\nabcdefghij
 O= out.pgm
