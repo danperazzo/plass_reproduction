@@ -70,8 +70,12 @@ def extract_points_cubic_canon(Bx, By, n = 50):
     return x, y, t
 
 def solve_linear_regression_fixed_points(matrix_t, points):
-    initial_point = points[0:1,:]
-    final_point = points[-1:,:]
+    # Pegar pontos referentes ao menor e maior t
+    min_t_index = np.argmin(matrix_t[:,3])
+    max_t_index = np.argmax(matrix_t[:,3])
+
+    initial_point = points[min_t_index,:]
+    final_point = points[max_t_index,:]
 
     factor_initial_point = matrix_t[:,0:1] * initial_point
     factor_final_point = matrix_t[:,-1:] * final_point
