@@ -42,6 +42,22 @@ def extract_points_cubic_canon(Bx, By, n = 50):
 
     return x, y, t
 
+def solve_linear_regression_fixed_points(matrix_t, points):
+    initial_point = points[0:1,:]
+    final_point = points[-1:,:]
+
+    factor_initial_point = matrix_t[:,0:1] * initial_point
+    factor_final_point = matrix_t[:,-1:] * final_point
+
+    matrix_t_no_endpoints = matrix_t[:, 1:-1]
+
+    points_translated = points - factor_final_point - factor_initial_point
+    coeficients_not_fixed = solve_linear_regression(matrix_t_no_endpoints, points_translated)
+
+    final_coefficients = np.vstack([initial_point, coeficients_not_fixed, final_point])
+
+    return final_coefficients 
+
 def construct_cubical_matrix_T(t):
     cubic_terms = np.vstack([(1-t)**3, (3*((1-t)**2)*t), (3*(1-t)*(t**2)) , (t**3)]).T
     return cubic_terms
@@ -51,6 +67,19 @@ def solve_linear_regression(matrix_t, points):
     transform_y = matrix_t.T @ points
     coefficients = np.linalg.solve(matrix_t.T @ matrix_t, transform_y)
     return coefficients
+
+def convert_from_bezier_coeff_to_canon(Bx, By):
+    A = np.array([
+        [ 1,  0,  0,  0],
+        [-3,  3,  0,  0],
+        [ 3, -6,  3,  0],
+        [-1,  3, -3,  1]
+    ])
+
+    Bx = A @ Bx
+    By = A @ By
+
+    return Bx, By
 
 def initialize_T(X, Y):
     T = [0]
@@ -116,12 +145,14 @@ points = np.vstack([X, Y]).T
 
 for i in range(10):
 
-    matrix_t = construct_cubic_matrix_canon(T)
-    extracted_coefficients = solve_linear_regression(matrix_t, points)
-    T = T_orig #update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1])
+    matrix_t = construct_cubical_matrix_T(T)
+    extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
+
+    canon_extracted_coeff = convert_from_bezier_coeff_to_canon(extracted_coefficients[:,0], extracted_coefficients[:,1])
+    T = update_T(T, canon_extracted_coeff[0], canon_extracted_coeff[1])
 
 
-points_extracted_from_cubix = extract_points_cubic_canon(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
+points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
 
 print(f'error: {np.linalg.norm(B_gt - extracted_coefficients)}')
 
