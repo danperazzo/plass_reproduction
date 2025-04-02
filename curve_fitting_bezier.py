@@ -1,6 +1,45 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import re
+import os
+import argparse
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Curve Fitting with Bezier")
+    parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
+    parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps for the fitting process.")
+    parser.add_argument("--use_T_orig", type=bool, default=False, help="Whether to use the original T values.")
+    parser.add_argument("--steps_newton", type=int, default=8, help="Number of Newton steps for updating T.")
+    parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points/b2.npy", help="Path to the Bezier points file.")
+    return parser.parse_args()
+
+
+
+def save_bezier_points(bezier_points, filename="bezier_points.npy"):
+    """
+    Saves the given Bezier points to a .npy file.
+
+    Parameters:
+        bezier_points (numpy.ndarray): The Bezier control points to save.
+        filename (str): The name of the file to save the points to.
+    """
+    np.save(filename, bezier_points)
+    print(f"Bezier points saved to {filename}")
+
+def load_bezier_points(filename="bezier_points.npy"):
+    """
+    Loads Bezier points from a .npy file.
+
+    Parameters:
+        filename (str): The name of the file to load the points from.
+
+    Returns:
+        numpy.ndarray: The loaded Bezier control points.
+    """
+    bezier_points = np.load(filename)
+    print(f"Bezier points loaded from {filename}")
+    return bezier_points
+
 
 def get_bezier_points():
     """
@@ -48,24 +87,11 @@ def dist(x1, y1, x2, y2):
 
 
 def extract_points_cubix(Bx, By, n = 50):
-    t = np.linspace(0, 1, n)  # Adjust range as needed
+    t = np.linspace(0, 1, n)  
     
     # Calcular x e y usando o polinomio
     x = Bx[0]*(1-t)**3 + Bx[1]*(3*((1-t)**2)*t)  + Bx[2] * (3*(1-t)*(t**2))  + Bx[3] * (t**3)
     y = By[0]*(1-t)**3 + By[1]*(3*((1-t)**2)*t)  + By[2] * (3*(1-t)*(t**2)) + By[3] * (t**3)
-
-    return x, y, t
-
-def construct_cubic_matrix_canon(t):
-    cubic_terms = np.vstack([np.ones(len(t)), t, t**2, t**3]).T
-    return cubic_terms
-
-def extract_points_cubic_canon(Bx, By, n = 50):
-    t = np.linspace(0, 1, n)  # Adjust range as needed
-    
-    # Calcular x e y usando o polinomio
-    x = Bx[0] + Bx[1]*t + Bx[2]*t**2 + Bx[3]*t**3
-    y = By[0] + By[1]*t + By[2]*t**2 + By[3]*t**3
 
     return x, y, t
 
@@ -134,9 +160,7 @@ def initialize_T(X, Y):
     T = np.array(T) / s
     return T
 
-def update_T(T, Bx, By):
-
-    # Primeira derivada
+def compute_step_newton(T, Bx, By):
     d1 = np.array([
         [-3, 3, 0, 0],
         [ 0,-3, 3, 0],
@@ -186,11 +210,33 @@ def update_T(T, Bx, By):
     
     return T
 
-read_points = False
+
+def update_T(T, Bx, By, steps_newton):
+
+    for _ in range(steps_newton):
+       
+        T = compute_step_newton(T, Bx, By)
+    
+    return T
+
+
+args = parse_arguments()
+
+read_points = args.read_points
+num_steps = args.num_steps
+use_T_orig = args.use_T_orig
+steps_newton = args.steps_newton
+path_to_bezier_points = args.path_to_bezier_points
+
 
 if read_points:
 
-    bezier_points = get_bezier_points()
+    if not os.path.exists(path_to_bezier_points):
+        bezier_points = get_bezier_points()
+        save_bezier_points(bezier_points, path_to_bezier_points)
+    else:
+        bezier_points = load_bezier_points(path_to_bezier_points)
+
     Bx = bezier_points[:, 0]
     By = bezier_points[:, 1]
 
@@ -212,18 +258,22 @@ else:
     Y = Y_pre[2:n + 3]
 
 
-T = initialize_T(X, Y)
+if use_T_orig:
+    T = T_orig
+    num_steps = 1
+
+else:   
+    T = initialize_T(X, Y)
+
+
 points = np.vstack([X, Y]).T
 
-for i in range(10):
+for i in range(num_steps):
 
     matrix_t = construct_cubical_matrix_T(T)
     extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
 
-    T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1])
-    
-    points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
-
+    T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1], steps_newton)
 
 points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
 
