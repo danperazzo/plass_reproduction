@@ -89,6 +89,14 @@ def solve_linear_regression_fixed_points(matrix_t, points):
 
     return final_coefficients 
 
+def construct_linear_matrix_T(t):
+    linear_terms = np.vstack([(1-t), (t)]).T
+    return linear_terms
+
+def construct_quadratic_matrix_T(t):
+    quadratic_terms = np.vstack([(1-t)**2, (2*(1-t)*t), (t**2)]).T
+    return quadratic_terms
+
 def construct_cubical_matrix_T(t):
     cubic_terms = np.vstack([(1-t)**3, (3*((1-t)**2)*t), (3*(1-t)*(t**2)) , (t**3)]).T
     return cubic_terms
@@ -129,36 +137,56 @@ def initialize_T(X, Y):
 def update_T(T, Bx, By):
 
     # Primeira derivada
-    d1_Bx = np.array([Bx[1], 2 * Bx[2], 3 * Bx[3]])
-    d1_By = np.array([By[1], 2 * By[2], 3 * By[3]])
+    d1 = np.array([
+        [-3, 3, 0, 0],
+        [ 0,-3, 3, 0],
+        [ 0, 0,-3, 3]
+    ])
+
+    d1_Bx = d1 @ Bx.transpose()
+    d1_By = d1 @ By.transpose()
 
     # Segunda derivada
-    d2_Bx = np.array([d1_Bx[1], 2 * d1_Bx[2]])
-    d2_By = np.array([d1_By[1], 2 * d1_By[2]])
+    d2 = np.array([
+        [  6,-12,  6,  0],
+        [  0,  6,-12,  6],
+    ])
 
-    for j in range(len(T)):
-        # X(t)
-        X1 = Bx[0] + (Bx[1] * T[j]) + (Bx[2] * T[j]**2) + (Bx[3] * T[j]**3)
-        Y1 = By[0] + (By[1] * T[j]) + (By[2] * T[j]**2) + (By[3] * T[j]**3)
-        # X'(t)
-        X2 = d1_Bx[0] + (d1_Bx[1] * T[j]) + (d1_Bx[2] * T[j]**2)
-        Y2 = d1_By[0] + (d1_By[1] * T[j]) + (d1_By[2] * T[j]**2)
-        # X''(t)
-        X3 = d2_Bx[0] + (d2_Bx[1] * T[j])
-        Y3 = d2_By[0] + (d2_By[1] * T[j])
-        # f(t)
-        f = (X1 - X[j]) * X2 + (Y1 - Y[j]) * Y2
-        # f'(t)
-        d1_f = X2**2 + Y2**2 + (X1 - X[j]) * X3 + (Y1 - Y[j]) * Y3
-        # t <- t - f(t)/f'(t)
-        T[j] -= f / d1_f
+    d2_Bx = d2 @ Bx.transpose()
+    d2_By = d2 @ By.transpose()
 
-    T = (T - np.min(T)) / np.max(T)
+    # T_cúbico
+    T_cubico = construct_cubical_matrix_T(T)
 
+    X1 = Bx @ T_cubico.transpose()
+    Y1 = By @ T_cubico.transpose()
+
+    # T_quadratico
+    T_quadratico = construct_quadratic_matrix_T(T)
+
+    X2 = d1_Bx @ T_quadratico.transpose()
+    Y2 = d1_By @ T_quadratico.transpose()
+
+    # T_linear
+    T_linear = construct_linear_matrix_T(T)
+
+    X3 = d2_Bx @ T_linear.transpose()
+    Y3 = d2_By @ T_linear.transpose()
+
+    # f(t)
+    f = (X1 - X) * X2 + (Y1 - Y) * Y2
+
+    # f'(t)
+    d1_f = X2**2 + Y2**2 + (X1 - X) * X3 + (Y1 - Y) * Y3
+
+    # t <- t - f(t)/f'(t)
+    T -= f / d1_f
+
+    T = (T - np.min(T)) / (np.max(T) - np.min(T))
     
     return T
 
-read_points = True
+read_points = False
 
 if read_points:
 
@@ -187,13 +215,14 @@ else:
 T = initialize_T(X, Y)
 points = np.vstack([X, Y]).T
 
-for i in range(1):
+for i in range(10):
 
     matrix_t = construct_cubical_matrix_T(T)
     extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
 
-    canon_extracted_coeff = convert_from_bezier_coeff_to_canon(extracted_coefficients[:,0], extracted_coefficients[:,1])
-    T = update_T(T, canon_extracted_coeff[0], canon_extracted_coeff[1])
+    T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1])
+    
+    points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
 
 
 points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
@@ -206,4 +235,3 @@ if read_points:
 
     print(f'Error: {np.linalg.norm(B_gt - extracted_coefficients)}')
 plt.show()
-
