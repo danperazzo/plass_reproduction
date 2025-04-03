@@ -9,7 +9,6 @@ def parse_arguments():
     parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
     parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps for the fitting process.")
     parser.add_argument("--use_T_orig", type=bool, default=False, help="Whether to use the original T values.")
-    parser.add_argument("--steps_newton", type=int, default=8, help="Number of Newton steps for updating T.")
     parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points/b2.npy", help="Path to the Bezier points file.")
     return parser.parse_args()
 
@@ -211,11 +210,16 @@ def compute_step_newton(T, Bx, By):
     return T
 
 
-def update_T(T, Bx, By, steps_newton):
+def update_T(T, Bx, By):
 
-    for _ in range(steps_newton):
-       
+    error_old = 1
+    error = 0
+
+    while abs(error - error_old) > 10**(-7):
+        T_old = T
         T = compute_step_newton(T, Bx, By)
+        error_old = error
+        error = np.sum((T - T_old)**2)
     
     return T
 
@@ -225,7 +229,6 @@ args = parse_arguments()
 read_points = args.read_points
 num_steps = args.num_steps
 use_T_orig = args.use_T_orig
-steps_newton = args.steps_newton
 path_to_bezier_points = args.path_to_bezier_points
 
 
@@ -273,7 +276,7 @@ for i in range(num_steps):
     matrix_t = construct_cubical_matrix_T(T)
     extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
 
-    T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1], steps_newton)
+    T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1])
 
 points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
 
