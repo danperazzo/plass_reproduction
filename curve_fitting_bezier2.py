@@ -268,44 +268,75 @@ else:
 
 points = np.vstack([X, Y]).T
 
-
-
-
-plt.ion()
-fig1, ax1 = plt.subplots()  # Primeira janela
-
+fig1, ax1 = plt.subplots()
 ax1.scatter(X, Y)
 
-
+# Parâmetros iniciais
 j = 1
 Qt = 22
-VErros = np.zeros(int((Qt - 1)/3))
-XErrors = np.zeros(int((Qt - 1)/3))
-print(VErros)
+P = 3
+VErros = np.zeros(int((Qt - 1) /P))
+XErrors = np.zeros(int((Qt - 1) /P))
 j2 = 0
-while j < Qt:
-    XErrors[j2] = j
+
+
+
+def init():
+    ax1.clear()
+    ax1.scatter(X, Y)
+    ax1.set_title('Início')
+    return ax1,
+
+def update(frame):
+    global j, j2, T
+
+    if j >= Qt:
+        j = 1  # Volta para o início para fazer o loop manualmente
+        T = initialize_T(X, Y)  # Se quiser reinicializar T no loop
+
+    ax1.clear()
+    ax1.scatter(X, Y)
+
+    XErrors[j2 % len(XErrors)] = j
     j2 += 1
+
     for i in range(j):
         matrix_t = construct_cubical_matrix_T(T)
         extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
+        canon_extracted_coeff = convert_from_bezier_coeff_to_canon(extracted_coefficients[:, 0], extracted_coefficients[:, 1])
+        T = update_T(T, canon_extracted_coeff[0], canon_extracted_coeff[1])
 
-        T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1], steps_newton)
+    points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:, 0], extracted_coefficients[:, 1], n=50)
 
-    points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
-
-    ax1.scatter(X, Y) 
     ax1.plot(points_extracted_from_cubix[0], points_extracted_from_cubix[1], 'r')
     ax1.set_title(f'Iteração {j}')
-    
-    fig1.canvas.draw() 
-    j += 3
+
     if read_points:
         print(f'Error: {np.linalg.norm(B_gt - extracted_coefficients)}')
-    VErros[int((j - 1)/3) - 1] = np.linalg.norm(B_gt - extracted_coefficients)
-    plt.pause(3)  # Tempo de espera entre os gráficos
-    if j < Qt - 1:
-        ax1.clear()
+    VErros[int((j - 1)/P) % len(VErros)] = np.linalg.norm(B_gt - extracted_coefficients)
+
+    j += P
+
+    return ax1,
+
+# Criação da animação
+ani = animation.FuncAnimation(
+    fig1,
+    update,
+    frames=range(0, (Qt-1)//P),
+    init_func=init,
+    blit=False,
+    interval= 1000,  
+    repeat=True
+)
+
+# Só mostrar na tela (não salvar!)
+plt.show()
+
+# Depois (opcional)
+print(XErrors)
+print(VErros)
+
         
 print(XErrors)
 print(VErros)
