@@ -3,13 +3,15 @@ import matplotlib.pyplot as plt
 import re
 import os
 import argparse
+import matplotlib.animation as animation
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Curve Fitting with Bezier")
     parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
     parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps for the fitting process.")
     parser.add_argument("--use_T_orig", type=bool, default=False, help="Whether to use the original T values.")
-    parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points/b2.npy", help="Path to the Bezier points file.")
+    parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points", help="Path to the Bezier points file.")
     return parser.parse_args()
 
 
@@ -261,30 +263,92 @@ else:
     Y = Y_pre[2:n + 3]
 
 
+# --- Código inicial ---
 if use_T_orig:
     T = T_orig
     num_steps = 1
-
-else:   
+else:
     T = initialize_T(X, Y)
-
+    num_steps = 12
 
 points = np.vstack([X, Y]).T
+errors = []
+fig, ax = plt.subplots(figsize=(8, 6))
 
-for i in range(num_steps):
+# Salvar todos os pontos para o vídeo depois
+saved_points_x = []
+saved_points_y = []
 
-    matrix_t = construct_cubical_matrix_T(T)
-    extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
+k = 0
+c = 0
 
-    T = update_T(T, extracted_coefficients[:,0], extracted_coefficients[:,1])
+plt.ion()  # modo interativo
 
-points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:,0], extracted_coefficients[:,1], n=50)
+while True:  # loop infinito
+    T = initialize_T(X, Y)
+    k = k + 1
+    for i in range(num_steps):
+        matrix_t = construct_cubical_matrix_T(T)
+        extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
 
-plt.scatter(X, Y)
-plt.plot(points_extracted_from_cubix[0], points_extracted_from_cubix[1], 'r')
+        T = update_T(T, extracted_coefficients[:, 0], extracted_coefficients[:, 1])
+
+        points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:, 0], extracted_coefficients[:, 1], n=50)
+
+        saved_points_x.append(points_extracted_from_cubix[0])
+        saved_points_y.append(points_extracted_from_cubix[1])
+
+        ax.clear()
+        ax.scatter(X, Y, label='Dados Originais')
+        ax.plot(points_extracted_from_cubix[0], points_extracted_from_cubix[1], 'r', label=f'Iteração {i+1}')
+        ax.legend()
+        ax.set_title(f'Iteração {i+1}')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        plt.pause(1)
+
+        if read_points:
+            error = np.linalg.norm(B_gt - extracted_coefficients)
+            errors.append(error)
+            print(f'Iteração {i+1}: Error = {error:.4f}')
+
+        if not plt.get_fignums():
+            print("Janela fechada. Saindo do loop.")
+            c = 1
+            break
+
+    if c == 1:
+        break
+
+    if k == 1:
+        plt.figure()
+        plt.plot(errors)
+        plt.xlabel('Passo')
+        plt.ylabel('Erro')
+        plt.title('Erro em função do passo')
+        plt.grid(True)
+        plt.show()
+
+plt.ioff()  # desliga modo interativo depois
+
+# --- Agora salva o vídeo com os pontos gravados ---
+print("Salvando o vídeo...")
+
+fig2, ax2 = plt.subplots(figsize=(8, 6))
 
 
-if read_points:
+def update(frame_idx):
+    ax2.clear()
+    ax2.scatter(X, Y, label='Dados Originais')
+    ax2.plot(saved_points_x[frame_idx], saved_points_y[frame_idx], 'r', label=f'Iteração {frame_idx+1}')
+    ax2.legend()
+    ax2.set_title(f'Iteração {frame_idx+1}')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Y')
+    ax2.set_xlim(np.min(X)-1, np.max(X)+1)
+    ax2.set_ylim(np.min(Y)-1, np.max(Y)+1)
 
-    print(f'Error: {np.linalg.norm(B_gt - extracted_coefficients)}')
-plt.show()
+ani = animation.FuncAnimation(fig2, update, frames= num_steps, interval=300)
+
+ani.save('evolucao.mp4', writer='ffmpeg', fps=5)
+print("Vídeo salvo como evolucao.mp4 🎬")
