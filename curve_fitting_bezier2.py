@@ -3,14 +3,17 @@ import matplotlib.pyplot as plt
 import re
 import os
 import argparse
+import time
+import matplotlib.animation as animation
+
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Curve Fitting with Bezier")
     parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
     parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps for the fitting process.")
     parser.add_argument("--use_T_orig", type=bool, default=False, help="Whether to use the original T values.")
-    parser.add_argument("--steps_newton", type=int, default=8, help="Number of Newton steps for updating T.")
-    parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points/b2.npy", help="Path to the Bezier points file.")
+    parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points", help="Path to the Bezier points file.")
     return parser.parse_args()
 
 
@@ -211,11 +214,16 @@ def compute_step_newton(T, Bx, By):
     return T
 
 
-def update_T(T, Bx, By, steps_newton):
+def update_T(T, Bx, By):
 
-    for _ in range(steps_newton):
-       
+    error_old = 1
+    error = 0
+
+    while abs(error - error_old) > 10**(-7):
+        T_old = T
         T = compute_step_newton(T, Bx, By)
+        error_old = error
+        error = np.sum((T - T_old)**2)
     
     return T
 
@@ -225,7 +233,6 @@ args = parse_arguments()
 read_points = args.read_points
 num_steps = args.num_steps
 use_T_orig = args.use_T_orig
-steps_newton = args.steps_newton
 path_to_bezier_points = args.path_to_bezier_points
 
 
@@ -257,93 +264,95 @@ else:
     X = X_pre[2:n + 3]
     Y = Y_pre[2:n + 3]
 
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import numpy as np
 
+# --- Código inicial ---
 if use_T_orig:
     T = T_orig
     num_steps = 1
-
-else:   
+else:
     T = initialize_T(X, Y)
-
+    num_steps = 12
 
 points = np.vstack([X, Y]).T
+errors = []
+fig, ax = plt.subplots(figsize=(8, 6))
 
-fig1, ax1 = plt.subplots()
-ax1.scatter(X, Y)
+# Salvar todos os pontos para o vídeo depois
+saved_points_x = []
+saved_points_y = []
 
-# Parâmetros iniciais
-j = 1
-Qt = 22
-P = 3
-VErros = np.zeros(int((Qt - 1) /P))
-XErrors = np.zeros(int((Qt - 1) /P))
-j2 = 0
+k = 0
+c = 0
 
+plt.ion()  # modo interativo
 
-
-def init():
-    ax1.clear()
-    ax1.scatter(X, Y)
-    ax1.set_title('Início')
-    return ax1,
-
-def update(frame):
-    global j, j2, T
-
-    if j >= Qt:
-        j = 1  # Volta para o início para fazer o loop manualmente
-        T = initialize_T(X, Y)  # Se quiser reinicializar T no loop
-
-    ax1.clear()
-    ax1.scatter(X, Y)
-
-    XErrors[j2 % len(XErrors)] = j
-    j2 += 1
-
-    for i in range(j):
+while True:  # loop infinito
+    T = initialize_T(X, Y)
+    k = k + 1
+    for i in range(num_steps):
         matrix_t = construct_cubical_matrix_T(T)
         extracted_coefficients = solve_linear_regression_fixed_points(matrix_t, points)
-        canon_extracted_coeff = convert_from_bezier_coeff_to_canon(extracted_coefficients[:, 0], extracted_coefficients[:, 1])
-        T = update_T(T, canon_extracted_coeff[0], canon_extracted_coeff[1])
 
-    points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:, 0], extracted_coefficients[:, 1], n=50)
+        T = update_T(T, extracted_coefficients[:, 0], extracted_coefficients[:, 1])
 
-    ax1.plot(points_extracted_from_cubix[0], points_extracted_from_cubix[1], 'r')
-    ax1.set_title(f'Iteração {j}')
+        points_extracted_from_cubix = extract_points_cubix(extracted_coefficients[:, 0], extracted_coefficients[:, 1], n=50)
 
-    if read_points:
-        print(f'Error: {np.linalg.norm(B_gt - extracted_coefficients)}')
-    VErros[int((j - 1)/P) % len(VErros)] = np.linalg.norm(B_gt - extracted_coefficients)
+        saved_points_x.append(points_extracted_from_cubix[0])
+        saved_points_y.append(points_extracted_from_cubix[1])
 
-    j += P
+        ax.clear()
+        ax.scatter(X, Y, label='Dados Originais')
+        ax.plot(points_extracted_from_cubix[0], points_extracted_from_cubix[1], 'r', label=f'Iteração {i+1}')
+        ax.legend()
+        ax.set_title(f'Iteração {i+1}')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        plt.pause(1)
 
-    return ax1,
+        if read_points:
+            error = np.linalg.norm(B_gt - extracted_coefficients)
+            errors.append(error)
+            print(f'Iteração {i+1}: Error = {error:.4f}')
 
-# Criação da animação
-ani = animation.FuncAnimation(
-    fig1,
-    update,
-    frames=range(0, (Qt-1)//P),
-    init_func=init,
-    blit=False,
-    interval= 1000,  
-    repeat=True
-)
+        if not plt.get_fignums():
+            print("Janela fechada. Saindo do loop.")
+            c = 1
+            break
 
-# Só mostrar na tela (não salvar!)
-plt.show()
+    if c == 1:
+        break
 
-# Depois (opcional)
-print(XErrors)
-print(VErros)
+    if k == 1:
+        plt.figure()
+        plt.plot(errors)
+        plt.xlabel('Passo')
+        plt.ylabel('Erro')
+        plt.title('Erro em função do passo')
+        plt.grid(True)
+        plt.show()
 
-        
-print(XErrors)
-print(VErros)
-plt.ioff()
-fig2, ax2 = plt.subplots()  # Segunda janela
-ax2.plot(XErrors, VErros,color='blue')
-fig2.canvas.draw() 
+plt.ioff()  # desliga modo interativo depois
 
+# --- Agora salva o vídeo com os pontos gravados ---
+print("Salvando o vídeo...")
 
-plt.show()
+fig2, ax2 = plt.subplots(figsize=(8, 6))
+
+def update(frame_idx):
+    ax2.clear()
+    ax2.scatter(X, Y, label='Dados Originais')
+    ax2.plot(saved_points_x[frame_idx], saved_points_y[frame_idx], 'r', label=f'Iteração {frame_idx+1}')
+    ax2.legend()
+    ax2.set_title(f'Iteração {frame_idx+1}')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Y')
+    ax2.set_xlim(np.min(X)-1, np.max(X)+1)
+    ax2.set_ylim(np.min(Y)-1, np.max(Y)+1)
+
+ani = animation.FuncAnimation(fig2, update, frames= num_steps, interval=300)
+
+ani.save('evolucao.mp4', writer='ffmpeg', fps=5)
+print("Vídeo salvo como evolucao.mp4 🎬")
