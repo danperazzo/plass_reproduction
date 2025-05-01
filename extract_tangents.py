@@ -4,15 +4,18 @@ import re
 import os
 import argparse
 import matplotlib.animation as animation
+import tqdm
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Curve Fitting with Bezier")
-    parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
+    parser.add_argument("--read_points", type=bool, default=False, help="Whether to read points from file or generate new ones.")
     parser.add_argument("--num_steps", type=int, default=20, help="Number of steps for the fitting process.")
     parser.add_argument("--use_T_orig", type=bool, default=False, help="Whether to use the original T values.")
     parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points", help="Path to the Bezier points file.")
     parser.add_argument("--visualize_evolution", type=bool, default=False, help="Whether to visualize the evolution of the fitting process.")
+    parser.add_argument("--path_points", type=str, default='3/3.txt', help="Size of the sliding window for fitting.")
+    
     return parser.parse_args()
 
 
@@ -218,12 +221,14 @@ def update_T(T, Bx, By, X, Y):
 
     error_old = 1
     error = 0
+    steps = 0
 
-    while abs(error - error_old) > 10**(-7):
+    while abs(error - error_old) > 10**(-7) and steps < 100:
         T_old = T
         T = compute_step_newton(T, Bx, By, X, Y)
         error_old = error
         error = np.sum((T - T_old)**2)
+        steps += 1
     
     return T
 
@@ -343,7 +348,7 @@ def extract_tangent_of_bezier(Bx, By, time):
     dy = 3 * ((1 - time) ** 2) * (By[1] - By[0]) + 6 * (1 - time) * time * (By[2] - By[1]) + 3 * (time ** 2) * (By[3] - By[2])
     return dx, dy
 
-def sliding_window(X,Y,T, use_T_orig, num_steps, window_size=10):
+def sliding_window(X,Y,T, use_T_orig, num_steps, window_size=5):
     """
     Apply a sliding window to the data points and fit Bezier curves to each window.
     
@@ -362,7 +367,7 @@ def sliding_window(X,Y,T, use_T_orig, num_steps, window_size=10):
     fitted_curves = []
     tangent_points = []
 
-    for i in range(n):
+    for i in tqdm.tqdm(range(n), desc="Fitting Bezier curves"):
 
         left_interval = max(0, i - window_size)
         right_interval = min(n, i + window_size)
@@ -407,19 +412,10 @@ def main():
         X, Y, T_orig = extract_points_cubix(Bx, By, n=100) #extract_points(eps)
 
     else:
-
-        # Pegar os pontos
-        with open('example.eps', 'r') as f:
-            eps = f.read()
-
-        X_pre, Y_pre = extract_points(eps)
-
-        # Fixar 'n' para testar
-        n = 30
-
-        X = X_pre[2:n + 3]
-        Y = Y_pre[2:n + 3]
-
+        
+        points = np.loadtxt(args.path_points, delimiter=' ')
+        X = points[:, 0]
+        Y = points[:, 1]
 
     # --- Código inicial ---
     if use_T_orig:
@@ -433,19 +429,18 @@ def main():
 
     else:
 
-        extracted_coefficients_list, tangent_points = sliding_window(X, Y, T, use_T_orig, num_steps, window_size=10)
+        extracted_coefficients_list, tangent_points = sliding_window(X, Y, T, use_T_orig, num_steps, window_size=5)
 
         extracted_coefficients = extracted_coefficients_list[0]
 
-        points = extract_points_cubix(Bx, By, n=50)
-
+        if read_points:
+            points = extract_points_cubix(Bx, By, n=50)
 
         fig, ax = plt.subplots(figsize=(8, 6))
 
 
 
-        ax.scatter(X, Y, label='Dados Originais')
-        ax.plot(points[0], points[1], 'r', label='Curva Ajustada')
+        ax.plot(X, Y, label='Dados Originais')
 
 
         # Add tangent vectors as arrows
