@@ -356,7 +356,7 @@ def bezier_dist(points, T, coefficients):
     return distances
 
 
-def rdp_bezier(points, T, epsilon, method="middle"):
+def rdp_bezier(points, T, epsilon, method="max"):
     """
     Ramer-Douglas-Peucker algorithm adapted for Bezier curve simplification.
 
@@ -374,6 +374,8 @@ def rdp_bezier(points, T, epsilon, method="middle"):
     """
     n = len(points)
     start, end = points[0], points[-1]
+
+    T = initialize_T(points[:, 0], points[:, 1])
 
     if n <= 2:
         return points
@@ -439,10 +441,9 @@ def main():
     else:
 
         # Pegar os pontos
-        with open('/content/3.eps', 'r') as f:
-            eps = f.read()
-
-        X_pre, Y_pre = extract_points(eps)
+        points = np.loadtxt('3/3.txt', delimiter=' ')  # Adjust delimiter if needed
+        X_pre = points[:, 0]
+        Y_pre = points[:, 1]
 
         # Fixar 'n' para testar
         n = 100
