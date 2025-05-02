@@ -5,12 +5,12 @@ import re
 import os
 import argparse
 import matplotlib.animation as animation
-
+from extract_tangents import sliding_window
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Curve Fitting with Bezier")
     parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
-    parser.add_argument("--num_steps", type=int, default=20, help="Number of steps for the fitting process.")
+    parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps for the fitting process.")
     parser.add_argument("--use_T_orig", type=bool, default=False, help="Whether to use the original T values.")
     parser.add_argument("--path_to_bezier_points", type=str, default="bezier_points", help="Path to the Bezier points file.")
     parser.add_argument("--visualize_evolution", type=bool, default=False, help="Whether to visualize the evolution of the fitting process.")
@@ -344,221 +344,52 @@ def extract_tangent_of_bezier(Bx, By, time):
     dy = 3 * ((1 - time) ** 2) * (By[1] - By[0]) + 6 * (1 - time) * time * (By[2] - By[1]) + 3 * (time ** 2) * (By[3] - By[2])
     return dx, dy
 
-def sliding_window(X,Y,T, use_T_orig, num_steps, window_size=10):
+
+def rdp(points, epsilon, method="middle"):
     """
-    Apply a sliding window to the data points and fit Bezier curves to each window.
+    Ramer-Douglas-Peucker algorithm to simplify a curve.
 
     Parameters:
-        X (numpy.ndarray): X coordinates of the data points.
-        Y (numpy.ndarray): Y coordinates of the data points.
-        T (numpy.ndarray): Parameter values for the Bezier curve.
-        use_T_orig (bool): Whether to use the original T values.
-        num_steps (int): Number of steps for the fitting process.
-        window_size (int): Size of the sliding window.
+        points (numpy.ndarray): A 2D array of points (shape: [n, 2]).
+        epsilon (float): The distance threshold for simplification.
+        method (str): Method to choose the subdivision point. 
+                      "max" for maximum error, "middle" for the middle point.
 
     Returns:
-        numpy.ndarray: Fitted Bezier coefficients for each window.
+        list: A simplified list of points.
     """
-    n = len(X)
-    fitted_curves = []
-    tangent_points = []
-
-    for i in range(n):
-
-        left_interval = max(0, i - window_size)
-        right_interval = min(n, i + window_size)
-        X_window = X[left_interval:right_interval].copy()
-        Y_window = Y[left_interval:right_interval].copy()
-        T_window = T[left_interval:right_interval].copy()
-        T_center = T[i]
-
-        fitted_curve = fit_directly_bezier(X_window, Y_window, T_window, use_T_orig, num_steps)
-        fitted_curves.append(fitted_curve)
-        tangent_points.append(extract_tangent_of_bezier(fitted_curve[:, 0], fitted_curve[:, 1], T_center))
-
-    tangent_points = np.array(tangent_points)/20
-    return fitted_curves, tangent_points
-
-
-def RDP_angle(points, cos, dist):
-
-    # Lista dos nós
-    knots = []
-
-    # Ponto inicial
-    initial = points[0]
-
-    # Ponto final (mudar para variar com 'inter')
-    final = points[-1]
-
-    # Colocamos o nó inicial e o seu index
-    knots.append([initial, 0])
-
-
-    def find_knots(idx_initial, idx_final):
-        sharper = [None, -1]
-
-        for i in range(idx_initial + 1, idx_final):
-            P = points[i]
-
-            IP = points[idx_initial] - P
-            FP = points[idx_final] - P
-
-            mag_IP = np.linalg.norm(IP)
-            mag_FP = np.linalg.norm(FP)
-
-            cos_P = np.dot(IP, FP) / (mag_IP * mag_FP)
-
-            # Calculate distance from P to the line through points[idx_initial] and points[idx_final]
-            # Method: Using the cross product to find perpendicular distance
-            line = FP - IP
-            mag_line = np.linalg.norm(line)
-
-
-            # Cross product gives area of parallelogram; divide by base length for height (distance)
-            cross_product = np.cross(-IP, line)
-            if line.ndim > 1:  # Handling for multi-dimensional points
-                dist_P = np.linalg.norm(cross_product, axis=-1) / mag_line
-            else:
-                dist_P = abs(cross_product) / mag_line
-
-
-            if cos_P > cos and cos_P > sharper[1] and dist_P > dist:
-                I = points[idx_initial]
-                F = points[idx_final]
-                sharper = [[P, i], cos_P]
-
-
-        if sharper[1] > cos:
-            find_knots(idx_initial, sharper[0][1])
-            knots.append(sharper[0])
-            find_knots(sharper[0][1], idx_final)
-
-        # Deve retornar uma lista vazia quando não tiver pontos agudos
-        return
-
-    _ = True
-    while _:
-        find_knots(knots[-1][1], len(points)-1)
-        _ = False
-
-    # Colocamos o nó final e seu index (por enquanto)
-    knots.append([final, len(points) - 1])
-
-
-    return knots
-
-
-def RDP_angle2(points, cos, dist):
-
-    # Lista dos nós
-    knots = []
-
-    # Colocamos o nó inicial e o seu index
-    knots.append([points[0], 0])
-
-
-    def find_knots(idx_initial, idx_final):
-        sharper = [None, -1, 0]
-
-        for i in range(idx_initial + 1, idx_final):
-            P = points[i]
-
-            IP = points[idx_initial] - P
-            FP = points[idx_final] - P
-
-            mag_IP = np.linalg.norm(IP)
-            mag_FP = np.linalg.norm(FP)
-
-            cos_P = np.dot(IP, FP) / (mag_IP * mag_FP)
-
-            # Calculate distance from P to the line through points[idx_initial] and points[idx_final]
-            # Method: Using the cross product to find perpendicular distance
-            line = FP - IP
-            mag_line = np.linalg.norm(line)
-
-
-            # Cross product gives area of parallelogram; divide by base length for height (distance)
-            cross_product = np.cross(-IP, line)
-            if line.ndim > 1:  # Handling for multi-dimensional points
-                dist_P = np.linalg.norm(cross_product, axis=-1) / mag_line
-            else:
-                dist_P = abs(cross_product) / mag_line
-
-
-            if dist_P > sharper[2] and dist_P > dist:
-                sharper = [[P, i], cos_P, dist_P]
-
-
-        if sharper[2] > dist:
-            find_knots(idx_initial, sharper[0][1])
-            knots.append(sharper[0])
-            find_knots(sharper[0][1], idx_final)
-
-        # Deve retornar uma lista vazia quando não tiver pontos agudos
-        return
-
-    find_knots(0, len(points)-1)
-
-
-    return knots
-
-# Melhor até agora
-def RDP_angle3(points, cos, dist):
-
-    # Lista dos nós
-    knots = []
-
-    # Colocamos o nó inicial e o seu index
-    knots.append([points[0], 0])
-
-
-    def find_knots(idx_initial, idx_final):
-        sharper = [None, -1, 0]
-
-        for i in range(idx_initial + 1, idx_final):
-            P = points[i]
-
-            IP = points[idx_initial] - P
-            FP = points[idx_final] - P
-
-            mag_IP = np.linalg.norm(IP)
-            mag_FP = np.linalg.norm(FP)
-
-            cos_P = np.dot(IP, FP) / (mag_IP * mag_FP)
-
-            # Calculate distance from P to the line through points[idx_initial] and points[idx_final]
-            # Method: Using the cross product to find perpendicular distance
-            line = FP - IP
-            mag_line = np.linalg.norm(line)
-
-
-            # Cross product gives area of parallelogram; divide by base length for height (distance)
-            cross_product = np.cross(-IP, line)
-            if line.ndim > 1:  # Handling for multi-dimensional points
-                dist_P = np.linalg.norm(cross_product, axis=-1) / mag_line
-            else:
-                dist_P = abs(cross_product) / mag_line
-
-
-            if cos_P > sharper[1] and dist_P > dist:
-                sharper = [[P, i], cos_P, dist_P]
-
-
-        if sharper[2] > dist:
-            find_knots(idx_initial, sharper[0][1])
-            knots.append(sharper[0])
-            find_knots(sharper[0][1], idx_final)
-
-        # Deve retornar uma lista vazia quando não tiver pontos agudos
-        return
-
-    find_knots(0, len(points)-1)
-
-
-    return knots
-
-
+    # Find the point with the maximum distance from the line connecting the first and last points
+    start, end = points[0], points[-1]
+    line_vec = end - start
+    line_len = np.linalg.norm(line_vec)
+    if line_len == 0:
+        line_len = 1  # Avoid division by zero
+
+    # Compute perpendicular distances
+    distances = np.abs(np.cross(points - start, line_vec) / line_len)
+
+    if method == "max":
+        # Find the index of the point with the maximum distance
+        max_idx = np.argmax(distances)
+        max_dist = distances[max_idx]
+    elif method == "middle":
+        # Choose the middle point of the sequence
+        max_idx = len(points) // 2
+        max_dist = distances[max_idx]
+    else:
+        raise ValueError("Invalid method. Use 'max' or 'middle'.")
+
+    # If the maximum distance (or middle point distance) is greater than epsilon, recursively simplify
+    if max_dist > epsilon:
+        # Recursively simplify the two segments
+        left = rdp(points[:max_idx + 1], epsilon, method)
+        right = rdp(points[max_idx:], epsilon, method)
+
+        # Combine the results, excluding the duplicate point at the junction
+        return left[:-1] + right
+    else:
+        # If no point is farther than epsilon, return the endpoints
+        return [start, end]
 
 def main():
 
@@ -586,7 +417,7 @@ def main():
     else:
 
         # Pegar os pontos
-        with open('/content/3.eps', 'r') as f:
+        with open('3/3.eps', 'r') as f:
             eps = f.read()
 
         X_pre, Y_pre = extract_points(eps)
@@ -609,46 +440,48 @@ def main():
 
     if choose_knots:
         P = np.column_stack((X, Y))
-        knots = RDP_angle3(P, -0.7, 100)
-
-        fig, ax = plt.subplots(figsize=(8, 6))
-
-        ax.scatter(X, Y, label='Dados Originais')
-
-        print(len(knots))
-
-        ax.scatter([knot[0][0] for knot in knots], [knot[0][1] for knot in knots], color='red', label='Knots')
-
-        ax.legend()
-
-    else:
 
         extracted_coefficients_list, tangent_points = sliding_window(X, Y, T, use_T_orig, num_steps, window_size=10)
-
-        extracted_coefficients = extracted_coefficients_list[0]
-
-        points = extract_points_cubix(Bx, By, n=50)
-
-
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots()
 
 
 
-        ax.scatter(X, Y, label='Dados Originais')
-        ax.plot(points[0], points[1], 'r', label='Curva Ajustada')
+        ax.plot(X, Y, label='Dados Originais')
 
 
         # Add tangent vectors as arrows
         for i, (x, y) in enumerate(zip(X, Y)):
             if i < len(tangent_points):  # Ensure we have a tangent for this point
                 dx, dy = tangent_points[i]
-                ax.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
+                ax.quiver(x, y, dy, -dx, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
 
         ax.legend()
         ax.set_title('Curva Ajustada')
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         plt.show()
+
+        knots = rdp(P,10)
+        knots = np.array(knots)
+
+        fig, ax = plt.subplots()
+
+        ax.plot(X, Y, label='Dados Originais')
+
+        print(len(knots))
+
+        ax.plot(knots[:,0], knots[:,1], label='Pontos de controle',color='red', marker='o')
+        ax.legend()
+        plt.show()
+
+    else:
+
+        
+        extracted_coefficients = extracted_coefficients_list[0]
+        points = extract_points_cubix(Bx, By, n=50)
+
+
+        
 
 
 if "__main__" == __name__:
