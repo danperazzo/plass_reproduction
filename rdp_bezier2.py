@@ -99,6 +99,15 @@ def extract_points_cubix(Bx, By, n = 50):
 
     return x, y, t
 
+def extract_points_cubix_times(Bx, By, t):
+
+    # Calcular x e y usando o polinomio
+    x = Bx[0]*(1-t)**3 + Bx[1]*(3*((1-t)**2)*t)  + Bx[2] * (3*(1-t)*(t**2))  + Bx[3] * (t**3)
+    y = By[0]*(1-t)**3 + By[1]*(3*((1-t)**2)*t)  + By[2] * (3*(1-t)*(t**2)) + By[3] * (t**3)
+
+    return x, y, t
+
+
 def solve_linear_regression_fixed_points(matrix_t, points):
     # Pegar pontos referentes ao menor e maior t
     min_t_index = np.argmin(matrix_t[:,3])
@@ -380,7 +389,14 @@ def fit_bezier_tangents_simultaneous(t_data, X_data, Y_data, x_0, x_m, y_0, y_m,
     # Solve the linear system A * p = b, where p = [alpha_l, alpha_r]
     params, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
 
-    return params[0], params[1] # alpha_l_fit, alpha_r_fit
+    alpha_l, alpha_r = params
+
+    if alpha_l < 0:
+        alpha_l = -alpha_l
+    if alpha_r < 0:
+        alpha_r = -alpha_r
+
+    return alpha_l, alpha_r # alpha_l_fit, alpha_r_fit
 
 
 def solve_linear_regression_fixed_points_and_gradient(t, points, gradient_x, gradient_y, position_gradient):
@@ -407,8 +423,8 @@ def solve_linear_regression_fixed_points_and_gradient(t, points, gradient_x, gra
         B1 = initial_point + (res[2] * np.array([gradient_x, gradient_y])) / 3
         B2 = [res[0], res[1]]
     elif position_gradient == 'both':
-        B1 = initial_point + (res[1] * np.array([gradient_x[1], gradient_y[1]])) / 3
-        B2 = final_point - (res[0] * np.array([gradient_x[0], gradient_y[0]])) / 3
+        B1 = initial_point + (res[0] * np.array([gradient_x[0], gradient_y[0]])) / 3
+        B2 = final_point - (res[1] * np.array([gradient_x[1], gradient_y[1]])) / 3
     else:
         ...
 
@@ -474,9 +490,9 @@ def rdp_bezier(points, tangents, epsilon, method="max"):
     start, end = points[0], points[-1]
 
     if n <= 2:
-        return points
+        return [(np.array([start, start, end, end]), np.array([0.,1.]) )]
 
-    coefficients, T_new = fit_directly_bezier(points[:, 0], points[:, 1], tangents[0], tangents[-1], 10) # Example params
+    coefficients, T_new = fit_directly_bezier(points[:, 0], points[:, 1], tangents[0], tangents[-1], 1) # Example params
 
     distances = bezier_dist(points, T_new, coefficients)
 
@@ -507,9 +523,9 @@ def rdp_bezier(points, tangents, epsilon, method="max"):
         right_tangents = tangents[max_idx:]
         recursive_right = rdp_bezier(right_points, right_tangents, epsilon, method)
 
-        return np.vstack((recursive_left[:-1], recursive_right))
+        return recursive_left + recursive_right
     else:
-        return np.array([start, end])
+        return [ (coefficients, T_new )]
 
 def main():
 
@@ -537,7 +553,7 @@ def main():
     else:
 
         # Pegar os pontos
-        points = np.loadtxt('/content/3.txt', delimiter=' ')  # Adjust delimiter if needed
+        points = np.loadtxt('3/3.txt', delimiter=' ')  # Adjust delimiter if needed
         X_pre = points[:, 0]
         Y_pre = points[:, 1]
 
@@ -560,9 +576,7 @@ def main():
     if choose_knots:
         P = np.column_stack((X, Y))
 
-        extracted_coefficients_list, tangent_points = sliding_window(X, Y, T, use_T_orig, num_steps, window_size=10)
-
-
+        extracted_coefficients_list, tangent_points = sliding_window(X, Y, T, use_T_orig, num_steps, window_size=4)
 
         fig, ax = plt.subplots()
         ax.plot(X, Y, label='Dados Originais')
@@ -581,16 +595,41 @@ def main():
         ax.set_ylabel('Y')
         plt.show()
 
-        knots = rdp_bezier(P, tangent_points, 50.0, "max")
+        
+
+        list_bezier_knots = rdp_bezier(P, tangent_points, 130, "middle")
+        knots = []
+        cubic_bezier = []
+        for bezier_coef, times  in list_bezier_knots:
+
+            Bx, By = bezier_coef[:, 0], bezier_coef[:, 1]
+            times = np.linspace(0, 1, 50)
+            x, y, _ =  extract_points_cubix_times(Bx,By,times) # Generate points on the curve
+            points = np.stack([x, y]).T
+
+            cubic_bezier.append(bezier_coef)
+            knots.append(points)
+
+        cubic_bezier = np.array(cubic_bezier)
+
+        
+        knots = np.concatenate(knots)
         knots = np.array(knots)
 
         fig, ax = plt.subplots()
 
-        ax.plot(X, Y, label='Dados Originais')
+        ax.scatter(X, Y, label='Dados Originais')
+
+        for i, (x, y) in enumerate(zip(X, Y)):
+            if i < len(tangent_points):  # Ensure we have a tangent for this point
+                dx, dy = tangent_points[i]
+                ax.quiver(x, y, -dy, dx, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
+
+            
 
         print(len(knots))
 
-        ax.plot(knots[:,0], knots[:,1], label='Pontos de controle',color='red', marker='o')
+        ax.plot(knots[:,0], knots[:,1], label='Pontos da curva',color='red')
         ax.legend()
         plt.show()
 
