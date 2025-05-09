@@ -7,6 +7,36 @@ import argparse
 import matplotlib.animation as animation
 from extract_tangents import sliding_window
 
+
+def plot_bezier_vs_tolerance(points, tangents, tolerance_values, method="max"):
+    """
+    Plots the number of Bezier curves required for different tolerance error values.
+
+    Parameters:
+        points (numpy.ndarray): A 2D array of points (shape: [n, 2]).
+        tangents (numpy.ndarray): Tangent vectors at the start and end of the curve.
+        tolerance_values (list or numpy.ndarray): List of tolerance error values.
+        method (str): Method to choose the subdivision point ("max" or "middle").
+    """
+    num_curves = []
+
+    tolerance_values = np.arange(0.1, 60, 5)  # Example tolerance values
+    for epsilon in tolerance_values:
+        # Simplify the curve using rdp_bezier
+        list_bezier_knots = rdp_bezier(points, tangents, epsilon, method)
+        num_curves.append(len(list_bezier_knots))  # Count the number of Bezier curves
+
+    # Plot the results
+    plt.figure(figsize=(8, 6))
+    plt.plot(tolerance_values, num_curves, marker='o', color='blue', label='Number of Bezier Curves')
+    plt.title('Number of Bezier Curves vs. Tolerance Error')
+    plt.xlabel('Tolerance Error (epsilon)')
+    plt.ylabel('Number of Bezier Curves')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Curve Fitting with Bezier")
     parser.add_argument("--read_points", type=bool, default=True, help="Whether to read points from file or generate new ones.")
@@ -553,7 +583,7 @@ def main():
     else:
 
         # Pegar os pontos
-        points = np.loadtxt('3/3.txt', delimiter=' ')  # Adjust delimiter if needed
+        points = np.loadtxt('S/S.txt', delimiter=' ')  # Adjust delimiter if needed
         X_pre = points[:, 0]
         Y_pre = points[:, 1]
 
@@ -593,13 +623,17 @@ def main():
         ax.set_title('Curva Ajustada')
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
+
+        plt.axis('equal')
         plt.show()
 
         
 
-        list_bezier_knots = rdp_bezier(P, tangent_points, 130, "middle")
+        list_bezier_knots = rdp_bezier(P, tangent_points, 15, "middle")
         knots = []
         cubic_bezier = []
+
+        points_bezier = []
         for bezier_coef, times  in list_bezier_knots:
 
             Bx, By = bezier_coef[:, 0], bezier_coef[:, 1]
@@ -609,6 +643,10 @@ def main():
 
             cubic_bezier.append(bezier_coef)
             knots.append(points)
+
+            points_bezier = [[Bx[0], By[0]], [Bx[-1], By[-1]]] + points_bezier
+
+        points_bezier = np.array(points_bezier)
 
         cubic_bezier = np.array(cubic_bezier)
 
@@ -630,8 +668,14 @@ def main():
         print(len(knots))
 
         ax.plot(knots[:,0], knots[:,1], label='Pontos da curva',color='red')
+
+        ax.scatter(points_bezier[:,0], points_bezier[:,1], label='Pontos de controle', color='orange')
         ax.legend()
+        plt.axis('equal')
         plt.show()
+
+        plot_bezier_vs_tolerance(P, tangent_points, 130)
+
 
     else:
 
