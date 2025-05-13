@@ -43,7 +43,7 @@ class BezierCurveFitter:
             T.append(s)
 
         # T final
-        if n != 1:
+        if n > 1:
             T = np.array(T) / s
         
         return T
@@ -101,13 +101,18 @@ class BezierCurveFitter:
     
 
     def solve_linear_regression(self, P, matrix_t):
-        transformed_target = matrix_t.T @ P
-        coefficients = np.linalg.solve(matrix_t.T @ matrix_t, transformed_target)
+        if P.shape[0] == 2:
+            return np.array([P[0], [0, 0], [0, 0], P[1]])
+        elif P.shape[0] == 3:
+            return np.array([P[0], P[1], P[1], P[2]])
+        else:
+            transformed_target = matrix_t.T @ P
+            coefficients = np.linalg.solve(matrix_t.T @ matrix_t, transformed_target)
 
         return coefficients
 
     
-    def fit_directly_bezier(self, P, T, num_steps):
+    def fit_directly_bezier(self, P, num_steps):
 
         T  = self.initialize_T(P)
 
@@ -117,6 +122,56 @@ class BezierCurveFitter:
             T = self.update_T(P, T, bezier_coefficients)
 
         return bezier_coefficients
+    
+
+    def P_LR(self, T, alpha_l, alpha_r, p_0, p_m, gradient_left, gradient_right):
+        B1 = p_0 + (alpha_l * gradient_left) / 3
+        B2 = p_m - (alpha_r * gradient_right) / 3
+
+        T = np.array(T)
+
+        if T.ndim > 0:
+            p_0 = p_0[:, np.newaxis]
+            B1 = B1[:, np.newaxis]
+            B2 = B2[:, np.newaxis]
+            p_m = p_m[:, np.newaxis]
+
+        return (p_0 * (1-T)**3 + B1 * 3 * T * (1-T)**2 + B2 * 3 * T**2 * (1-T) + p_m * T**3).transpose()
+
+
+    def error_function_LR(self, params, P, T, gradient_left, gradient_right):
+        p_0, p_m = P[0,:], P[-1,:]
+        alpha_l, alpha_r = params
+        P_calculated = self.P_LR(T, alpha_l, alpha_r, p_0, p_m, gradient_left, gradient_right)
+
+        return np.sum((P_calculated - P)**2)
+
+
+    def solve_fixed_linear_regression(self, P, T, gradient_left, gradient_right):
+        initial_point = P[0,:]
+        final_point = P[-1,:]
+
+        initial_guess = [0, 0]
+        alpha_l, alpha_r = opt.minimize(self.error_function_LR, initial_guess, args=(P, T, gradient_left, gradient_right)).x
+
+        # Pode estar errado, cuidado
+        B1 = initial_point + (alpha_l * gradient_left) / 3
+        B2 = final_point - (alpha_r * gradient_right) / 3
+
+        final_coefficients = np.vstack([initial_point, B1, B2, final_point])
+
+        return final_coefficients
+    
+
+    def fit_fixed_bezier(self, P, num_steps, gradient_left, gradient_right):
+
+        T  = self.initialize_T(P)
+
+        for i in range(num_steps):
+            bezier_coefficients = self.solve_fixed_linear_regression(P, T, gradient_left, gradient_right)
+            T = self.update_T(P, T, bezier_coefficients)
+
+        return bezier_coefficients, T
     
 
     def extract_points_bezier(self, coefficients, n=50):
@@ -166,7 +221,7 @@ class BezierCurveFitter:
     
             T_center = self.T[i]
 
-            fitted_curve = self.fit_directly_bezier(P_window, T_window, num_steps)
+            fitted_curve = self.fit_directly_bezier(P_window, num_steps)
             fitted_curves.append(fitted_curve)
             tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
 
@@ -181,7 +236,35 @@ class BezierCurveFitter:
         return distances
     
 
-    def dp_rdp_bezier(self, P, T, epsilon, method="max"):
+    def rdp_bezier_error(self, P, tangents):
+        n = len(P)
+        
+        error_matrix = np.zeros((n, n), dtype=float)
+
+
+        for i in tqdm(range(n - 1), desc="Creating the error matrix"):
+            curves = []
+            gradient_left = tangents[i]
+
+            for j in range(i + 1, n - 1):
+                # Todas as curvas de bezier de P_i até todos os próximos pontos
+                gradient_right = tangents[j]
+                coefficients, T_new = self.fit_fixed_bezier(P[i:j+1], 1, gradient_left, gradient_right)
+                curves.append([coefficients, T_new])
+            
+            # Calcular o erro de todos os pontos e colocar na matriz
+            for offset in range(1, len(curves)):
+                curve_coefficients, curve_T = curves[offset]
+                
+                distances = self.bezier_dist(P[i:i+2+offset], curve_T, curve_coefficients)
+
+                error_matrix[i, i+1+offset] = distances[1:-1].max() if distances.size > 2 else 0.0
+                
+        
+        return error_matrix[:-4]
+    
+
+    def dp_rdp_bezier(self, P, tangents, epsilon, error_matrix=None):
         """
         Ramer-Douglas-Peucker algorithm adapted for Bezier curve simplification.
 
@@ -201,53 +284,12 @@ class BezierCurveFitter:
         if n < 2:
             return P.tolist()
         
-        error_matrix = np.zeros((n, n), dtype=float)
-    
-        # Não acho que precise
-        # T = initialize_T(P[:, 0], P[:, 1])
-
-
-        for i in range(n - 1):
-            start = P[i]
-            curves = []
-
-            for j in range(i+1, n):
-                # Todas as curvas de bezier de P_1 até todos os próximos pontos
-                coefficients, T_new = self.fit_directly_bezier(P[i:j+1], T[i:j+1], 10)
-                curves.append([coefficients, T_new])
-
-            # Calcular o erro de todos os pontos e colocar na matriz
-            for offset in range(1, curves.shape[0]):
-                curve_coefficients, curve_T = curves[offset]
+        if error_matrix is None:
+            error_matrix = self.rdp_bezier_error(P, tangents)
                 
-                distances = self.bezier_dist(P[i:i+1+offset], curve_T, curve_coefficients)
-
-                if method == "max":
-                    error_matrix[i, i+1+offset] = distances[1:-1].max() if distances.size > 2 else 0.0
-
-                elif method == "middle":
-                    mid_idx = 1 + (offset - 1)//2
-                    error_matrix[i, i+1+offset] = distances[mid_idx]
-                else:
-                    raise ValueError("Invalid method. Use 'max' or 'middle'.")
-                
-
-        '''
-        if max_idx != -1 and max_dist > epsilon:
-            left_points = P[:max_idx + 1]
-            left_T = T_new[:max_idx + 1]
-            recursive_left = self.dp_rdp_bezier(left_points, left_T, epsilon, method)
-
-            right_points = P[max_idx:]
-            right_T = T_new[max_idx:]
-            recursive_right = self.dp_rdp_bezier(right_points, right_T, epsilon, method)
-
-            return np.vstack((recursive_left[:-1], recursive_right))
-        else:
-            return np.array([start, end])
-        '''
 
         # Dynamic programming for minimal cuts
+        n = n-4
         dp = np.full(n, np.inf)
         prev = np.full(n, -1, dtype=int)
         dp[0] = 0
@@ -305,10 +347,9 @@ def main():
 
 
     # Pegar os pontos
-    with open('3.eps', 'r') as f:
-        eps = f.read()
-
-    X, Y = extract_points(eps)
+    points = np.loadtxt('3.txt', delimiter=' ')  # Adjust delimiter if needed
+    X = points[:, 0]
+    Y = points[:, 1]
 
     P = np.column_stack((X, Y))
 
@@ -342,14 +383,14 @@ def main():
 
         fig, ax = plt.subplots()
 
+        error_matrix = Bezier.rdp_bezier_error(P, tangent_points)
+
         def update(frame):
             # Limpa o gráfico anterior
             ax.clear()
-
-            T = Bezier.T
             
             epsilon = (5*(frame+1))  # Normaliza o frame para valores menores
-            knots, indices = Bezier.dp_rdp_bezier(P, T, epsilon)
+            knots, indices = Bezier.dp_rdp_bezier(P, tangent_points, epsilon, error_matrix)
             knots = np.array(knots)
 
             points_from_knots_bezier = []
@@ -362,35 +403,26 @@ def main():
                 next_idx = indices[i+1]
                 # Fitar fixando as tangents: TO DO
                 #curve_bezier = fit_directly_bezier(P[idx:next_idx+1], steps, tangent_points[idx], tangent_points[next_idx])
-                curve_T = Bezier.update_T(P[idx:next_idx+1])
-                curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx+1], curve_T, steps)
+                curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx+1], steps, tangent_points[idx], tangent_points[next_idx])
                 curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
                 points_from_knots_bezier.append(curve_points)
-            
-            # caso final tbm
-            idx = indices[-1]
-            next_idx = indices[0]
-            last_points = np.concatenate((P[idx:], P[:next_idx]))
-            #curve_bezier = fit_directly_bezier(P[idx:next_idx+1], steps, tangent_points[idx], tangent_points[next_idx])
-            curve_T = Bezier.update_T(P[idx:next_idx+1])
-            curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx+1], curve_T, steps)
-            curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
-            points_from_knots_bezier.append(curve_points)
+
+            points_from_knots_bezier = np.concatenate(points_from_knots_bezier, axis=0)
 
             # Plotagem
             ax.plot(X, Y, label='Dados Originais')
             ax.set_title(f'ε = {epsilon:.2f}')
             ax.scatter(knots[:,0], knots[:,1], label='Pontos de controle',color='orange')
-            ax.plot(P[:,0], P[:,1], label='Pontos da curva',color='red')
+            ax.plot(points_from_knots_bezier[:,0], points_from_knots_bezier[:,1], label='Pontos da curva',color='red')
             ax.legend()
             plt.axis('equal')
             print(epsilon)
 
         # Crie a animação
-        anim = animation.FuncAnimation(fig, update, frames=range(60), interval=250)
+        anim = animation.FuncAnimation(fig, update, frames=range(10), interval=250)
 
         # Salvar como GIF
-        anim.save('RDP_epsilon.gif', writer='pillow')
+        anim.save('RDP_epsilon10.gif', writer='pillow')
 
         #plt.show()
 
