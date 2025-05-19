@@ -1,6 +1,5 @@
 import numpy as np
 
-
 def solve_linear_regression_fixed_points_and_gradient(t, points, gradient_x, gradient_y):
     initial_point = points[0,:]
     final_point = points[-1,:]

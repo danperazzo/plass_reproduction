@@ -1,12 +1,5 @@
-# Standard library imports
-import re
-
-# Third-party imports
 import numpy as np
 import math
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import scipy.optimize as opt
 from tqdm import tqdm
 
 from src.utils import solve_linear_regression_fixed_points_and_gradient

@@ -1,25 +1,21 @@
-# Standard library imports
-import re
-
-# Third-party imports
 import numpy as np
-import math
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import scipy.optimize as opt
-from tqdm import tqdm
+import argparse
 
-from src.utils import solve_linear_regression_fixed_points_and_gradient
 from src.bezierCurveFitter import BezierCurveFitter
 
-
 def main():
-
-    num_steps = 1
+    parser = argparse.ArgumentParser(description='Visualize the evolution of a Bezier curve fitting process.')
+    parser.add_argument('--window_size', type=int, default=10, help='Size of the sliding window for tangent calculation.')
+    parser.add_argument('--num_steps', type=int, default=1, help='Number of steps for the fitting process.')
+    parser.add_argument('--input_file', type=str, default='examples/3-trace.txt', help='Path to the input file containing points.')
+    parser.add_argument('--output_file', type=str, default='RDP_epsilon10.gif', help='Path to save the output animation.')
+    args = parser.parse_args()
 
 
     # Pegar os pontos
-    points = np.loadtxt('examples/3-trace.txt', delimiter=' ')  # Adjust delimiter if needed
+    points = np.loadtxt(args.input_file, delimiter=' ')  # Adjust delimiter if needed
     X = points[:, 0]
     Y = points[:, 1]
 
@@ -30,7 +26,7 @@ def main():
     Bezier = BezierCurveFitter(P)
 
 
-    _, tangent_points = Bezier.sliding_window(num_steps, window_size=10)
+    _, tangent_points = Bezier.sliding_window(args.num_steps, window_size=args.window_size)
     fig, ax = plt.subplots()
     ax.plot(P[:, 0], P[:, 1], label='Dados Originais')
 
@@ -62,7 +58,7 @@ def main():
         ax.set_aspect('equal')
 
         epsilon = (2* (frame + 1)) 
-        steps = 2
+        steps = args.num_steps
         num_points = 50
 
         knots, indices = Bezier.get_knots(P, tangent_points, epsilon, steps)
@@ -86,7 +82,7 @@ def main():
         print(epsilon)
 
     anim = animation.FuncAnimation(fig, update, frames=range(9, -1, -2), interval=1500)
-    anim.save('RDP_epsilon10.gif', writer='pillow')
+    anim.save(args.output_file, writer='pillow')
 
 
 
