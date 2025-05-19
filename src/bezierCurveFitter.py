@@ -136,14 +136,6 @@ class BezierCurveFitter:
         return points, T
     
 
-    def calculate_points_bezier(self, T, coefficients):
-        T_cubic = self.construct_matrix_T(T, 3)
-
-        points = T_cubic @ coefficients
-
-        return points, T
-    
-
     def extract_tangent_of_bezier(self, coefficients, T):
         d1_bezier = self.d1 @ coefficients
         
