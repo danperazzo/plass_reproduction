@@ -255,10 +255,13 @@ class BezierCurveFitter:
         
         return error_matrix[:-4]
     
-    def get_knots(self, P, tangents, epsilon, steps = 2):
+    def get_knots(self, P, tangents, epsilon, steps = 2, disable_rdp=False):
         n = len(P)
 
-        poli_knots_idx = self.rdp(P, epsilon, [0, n - 1])
+        if not disable_rdp:
+            poli_knots_idx = self.rdp(P, epsilon, [0, n - 1])
+        else:
+            poli_knots_idx = np.arange(0, n, 1)
 
         m = len(poli_knots_idx)
 
