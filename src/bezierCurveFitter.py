@@ -218,34 +218,7 @@ class BezierCurveFitter:
         bezier_points = matrix_t @ coefficients
         distances = np.linalg.norm(P - bezier_points, axis=1)
         return distances
-    
 
-    def rdp_bezier_error(self, P, tangents):
-        n = len(P)
-        
-        error_matrix = np.zeros((n, n), dtype=float)
-
-
-        for i in tqdm(range(n - 1), desc="Creating the error matrix"):
-            curves = []
-            gradient_left = tangents[i]
-
-            for j in range(i + 1, n - 1):
-                # Todas as curvas de bezier de P_i até todos os próximos pontos
-                gradient_right = tangents[j]
-                coefficients, T_new = self.fit_fixed_bezier(P[i:j+1], 1, gradient_left, gradient_right)
-                curves.append([coefficients, T_new])
-            
-            # Calcular o erro de todos os pontos e colocar na matriz
-            for offset in range(1, len(curves)):
-                curve_coefficients, curve_T = curves[offset]
-                
-                distances = self.bezier_dist(P[i:i+2+offset], curve_T, curve_coefficients)
-
-                error_matrix[i, i+1+offset] = distances[1:-1].max() if distances.size > 2 else 0.0
-                
-        
-        return error_matrix[:-4]
     
     def get_knots(self, P, tangents, epsilon, steps = 2, disable_rdp=False):
         n = len(P)
