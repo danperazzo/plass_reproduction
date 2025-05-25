@@ -115,9 +115,16 @@ class BezierCurveFitter:
 
     def fit_fixed_bezier(self, P, num_steps, gradient_left, gradient_right):
 
+        if P.shape[0] == 2:
+            P_1 = P[0] + (P[1] - P[0]) / 3
+            P_2 = P[0] + 2*(P[1] - P[0]) / 3
+
+            return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
+
         T  = self.initialize_T(P)
         grad_x = [gradient_left[0], gradient_right[0]]
         grad_y = [gradient_left[1], gradient_right[1]]
+
 
         for i in range(num_steps):
             bezier_coefficients = solve_linear_regression_fixed_points_and_gradient(T, P, grad_x, grad_y)
@@ -220,7 +227,7 @@ class BezierCurveFitter:
         return distances
 
     
-    def get_knots(self, P, tangents, epsilon, steps = 2, disable_rdp=False):
+    def get_knots(self, P, tangents, epsilon, steps = 5, disable_rdp=False,  tolerance=0.5):
         n = len(P)
 
         if not disable_rdp:
@@ -244,7 +251,7 @@ class BezierCurveFitter:
                 coefficients, T_new = self.fit_fixed_bezier(P[left:right+1], steps, gradient_left, gradient_right)
                 distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
 
-                error_matrix[i, j] = distances[1:-1].max() if distances.size > 2 else 0.0
+                error_matrix[i, j] = distances.max() if distances.size > 2 else 0.0
 
         dp = np.full(m, np.inf)
         prev = np.full(m, -1, dtype=int)
@@ -252,11 +259,10 @@ class BezierCurveFitter:
 
         for j in range(1, m):
             for i in range(j):
-                if j == i + 1 or error_matrix[i, j] <= epsilon:
-                    cost = dp[i] + 1
-                    if cost < dp[j]:
-                        dp[j] = cost
-                        prev[j] = i
+                cost = dp[i] + tolerance + error_matrix[i, j]
+                if cost < dp[j]:
+                    dp[j] = cost
+                    prev[j] = i
 
         # Backtrack to find indices of kept points
         indices = []
@@ -268,4 +274,4 @@ class BezierCurveFitter:
         indices.reverse()
 
         knots = [P[idx] for idx in indices]
-        return knots, indices
+        return knots, indices, poli_knots_idx
