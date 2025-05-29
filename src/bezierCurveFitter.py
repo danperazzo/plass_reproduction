@@ -251,7 +251,7 @@ class BezierCurveFitter:
                 coefficients, T_new = self.fit_fixed_bezier(P[left:right+1], steps, gradient_left, gradient_right)
                 distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
 
-                error_matrix[i, j] = distances.max() if distances.size > 2 else 0.0
+                error_matrix[i, j] = (distances**2).sum() if distances.size > 2 else 0.0
 
         dp = np.full(m, np.inf)
         prev = np.full(m, -1, dtype=int)
