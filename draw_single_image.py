@@ -56,7 +56,7 @@ def main():
         next_idx = indices[i + 1]
         if np.array_equal(tangent_points[idx], np.array([0, 0])) or np.array_equal(tangent_points[next_idx], np.array([0, 0])):
             # $$$$$
-            curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx + 1], steps)
+            curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx + 1], steps,no_fixed_endpoints=False)
         else:
             curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, tangent_points[idx], tangent_points[next_idx])
         curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
