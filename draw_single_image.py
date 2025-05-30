@@ -29,15 +29,18 @@ def main():
     # --- Código inicial ---
     Bezier = BezierCurveFitter(P)
 
+    knots = Bezier.rdp(P, args.epsilon, [0, len(P) - 1])
+    corners = Bezier.get_corners(P, knots)
 
-    _, tangent_points = Bezier.sliding_window(args.num_steps, window_size=args.window_size)
+
+    _, tangent_points = Bezier.sliding_window(knots, corners, args.num_steps, window_size=args.window_size)
     
     fig, ax = plt.subplots()
 
     x_min, x_max = np.min(X) - 10, np.max(X) + 10
     y_min, y_max = np.min(Y) - 10, np.max(Y) + 10
     ax.set_xlim(x_min - 1, x_max + 1)  
-    ax.set_ylim(y_min - 1, y_max + 1)  
+    ax.set_ylim(y_min - 1, y_max + 1)
     ax.set_aspect('equal')
 
     steps = args.num_steps
@@ -51,7 +54,11 @@ def main():
     for i in range(len(indices) - 1):
         idx = indices[i]
         next_idx = indices[i + 1]
-        curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, tangent_points[idx], tangent_points[next_idx])
+        if np.array_equal(tangent_points[idx], np.array([0, 0])) or np.array_equal(tangent_points[next_idx], np.array([0, 0])):
+            # $$$$$
+            curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx + 1], steps)
+        else:
+            curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, tangent_points[idx], tangent_points[next_idx])
         curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
         points_from_knots_bezier.append(curve_points)
 
@@ -59,7 +66,7 @@ def main():
 
     ax.plot(X, Y, label='Dados Originais')
 
-    ax.plot(X[poli_knots_idx], Y[poli_knots_idx], 'o', label='Pontos do RDP', color='blue')
+    #ax.plot(X[poli_knots_idx], Y[poli_knots_idx], 'o', label='Pontos do RDP', color='blue')
 
     ax.set_title(f'ε = {args.epsilon:.2f}')
     ax.plot(points_from_knots_bezier[:, 0], points_from_knots_bezier[:, 1], label='Pontos da curva', color='red')

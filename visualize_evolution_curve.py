@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--num_steps', type=int, default=1, help='Number of steps for the fitting process.')
     parser.add_argument('--input_file', type=str, default='examples/3-trace.txt', help='Path to the input file containing points.')
     parser.add_argument('--output_file', type=str, default='RDP_epsilon10.gif', help='Path to save the output animation.')
+    parser.add_argument('--epsilon', type=int, default=2, help='Epsilon value for the RDP algorithm.')
     args = parser.parse_args()
 
 
@@ -25,8 +26,11 @@ def main():
     # --- Código inicial ---
     Bezier = BezierCurveFitter(P)
 
+    knots = Bezier.rdp(P, args.epsilon, [0, len(P) - 1])
+    corners = Bezier.get_corners(P, knots)
 
-    _, tangent_points = Bezier.sliding_window(args.num_steps, window_size=args.window_size)
+    _, tangent_points = Bezier.sliding_window(knots, corners, args.num_steps, window_size=args.window_size)
+
     fig, ax = plt.subplots()
     ax.plot(P[:, 0], P[:, 1], label='Dados Originais')
 
