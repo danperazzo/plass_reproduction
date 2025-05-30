@@ -87,7 +87,22 @@ class BezierCurveFitter:
 
         return T
     
-    
+    def solve_linear_regression_fixed_points(self,points, matrix_t):
+        initial_point = points[0:1,:]
+        final_point = points[-1:,:]
+
+        factor_initial_point = matrix_t[:,0:1] * initial_point
+        factor_final_point = matrix_t[:,-1:] * final_point
+
+        matrix_t_no_endpoints = matrix_t[:, 1:-1]
+
+        points_translated = points - factor_final_point - factor_initial_point
+        coeficients_not_fixed = self.solve_linear_regression(points_translated, matrix_t_no_endpoints)
+
+        final_coefficients = np.vstack([initial_point, coeficients_not_fixed, final_point])
+
+        return final_coefficients 
+
     def solve_linear_regression(self, P, matrix_t):
         A = matrix_t.T @ matrix_t
         b = matrix_t.T @ P
@@ -100,13 +115,18 @@ class BezierCurveFitter:
         return coefficients
 
     
-    def fit_directly_bezier(self, P, num_steps):
+    def fit_directly_bezier(self, P, num_steps, no_fixed_endpoints=True):
 
         T  = self.initialize_T(P)
 
         for i in range(num_steps):
             matrix_t = self.construct_matrix_T(T, 3)
-            bezier_coefficients = self.solve_linear_regression(P, matrix_t)
+
+            if no_fixed_endpoints:
+                bezier_coefficients = self.solve_linear_regression(P, matrix_t)
+
+            else: 
+                bezier_coefficients = self.solve_linear_regression_fixed_points(P, matrix_t)
             T = self.update_T(P, T, bezier_coefficients)
 
         return bezier_coefficients
@@ -320,7 +340,7 @@ class BezierCurveFitter:
 
                 if np.array_equal(gradient_left, np.array([0, 0])) or np.array_equal(gradient_right, np.array([0, 0])):
                     # $$$$$
-                    coefficients = self.fit_directly_bezier(P[left:right+1], steps)
+                    coefficients = self.fit_directly_bezier(P[left:right+1], steps, no_fixed_endpoints=False)
                     T_new = self.initialize_T(P[left:right+1])
                     distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
                 else:
