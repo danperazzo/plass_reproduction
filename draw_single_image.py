@@ -5,15 +5,22 @@ import argparse
 
 from src.bezierCurveFitter import BezierCurveFitter
 
+def write_bezier_curves(bezier_curves, filename):
+    with open(filename, 'w') as f:
+        for curve in bezier_curves:
+            f.write(' '.join(map(str, curve)) + '\n')
+    print(f"Bezier curves written to {filename}")
+
 def main():
     parser = argparse.ArgumentParser(description='Visualize the evolution of a Bezier curve fitting process.')
     parser.add_argument('--window_size', type=int, default=10, help='Size of the sliding window for tangent calculation.')
     parser.add_argument('--num_steps', type=int, default=100, help='Number of steps for the fitting process.')
-    parser.add_argument('--input_file', type=str, default='examples/3-trace.txt', help='Path to the input file containing points.')
+    parser.add_argument('--input_file', type=str, default='examples/g-150.txt', help='Path to the input file containing points.')
     parser.add_argument('--output_file', type=str, default='reconst_3.svg', help='Path to save the output animation.')
+    parser.add_argument('--output_bezier', type=str, default='bezier_curves.txt', help='Path to save the Bezier curves.')
     parser.add_argument('--epsilon', type=int, default=2, help='Epsilon value for the RDP algorithm.')
     parser.add_argument('--disable_rdp',type=bool, default=False, help='Use RDP compression for the curve fitting.')
-    parser.add_argument('--tolerance', type=float, default=0.5, help='Tolerance for the dynamic programming algorithm.')
+    parser.add_argument('--tolerance', type=float, default=0.005, help='Tolerance for the dynamic programming algorithm.')
 
     args = parser.parse_args()
 
@@ -50,6 +57,7 @@ def main():
     knots = np.array(knots)
 
     points_from_knots_bezier = []
+    bezier_curves = []
 
     for i in range(len(indices) - 1):
         idx = indices[i]
@@ -59,8 +67,11 @@ def main():
             curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx + 1], steps,no_fixed_endpoints=False)
         else:
             curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, tangent_points[idx], tangent_points[next_idx])
+        bezier_curves.append(curve_bezier)
         curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
         points_from_knots_bezier.append(curve_points)
+
+    write_bezier_curves(bezier_curves, args.output_bezier)
 
     points_from_knots_bezier = np.concatenate(points_from_knots_bezier, axis=0)
 

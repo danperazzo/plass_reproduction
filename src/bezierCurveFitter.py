@@ -2,7 +2,7 @@ import numpy as np
 import math
 from tqdm import tqdm
 
-from src.utils import solve_linear_regression_fixed_points_and_gradient
+from src.utils import solve_linear_regression_fixed_points_and_gradient, solve_linear_regression_one_tangent
 
 class BezierCurveFitter:
     """Handles the fitting of Bezier curves to point sets."""
@@ -115,7 +115,15 @@ class BezierCurveFitter:
         return coefficients
 
     
-    def fit_directly_bezier(self, P, num_steps, no_fixed_endpoints=True):
+    def fit_directly_bezier(self, P, num_steps, no_fixed_endpoints=True, return_T=False):
+        if P.shape[0] == 2:
+            P_1 = P[0] + (P[1] - P[0]) / 3
+            P_2 = P[0] + 2*(P[1] - P[0]) / 3
+
+            if return_T:
+                return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
+            else:
+                return np.array([P[0], P_1, P_2, P[1]])
 
         T  = self.initialize_T(P)
 
@@ -129,8 +137,28 @@ class BezierCurveFitter:
                 bezier_coefficients = self.solve_linear_regression_fixed_points(P, matrix_t)
             T = self.update_T(P, T, bezier_coefficients)
 
+        if return_T:
+            return bezier_coefficients, T
+
         return bezier_coefficients
     
+
+    def fit_fixed_bezier_single_gradient(self, P, num_steps, gradient, use_left=True):
+        if P.shape[0] == 2:
+            P_1 = P[0] + (P[1] - P[0]) / 3
+            P_2 = P[0] + 2*(P[1] - P[0]) / 3
+
+            return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
+
+        T  = self.initialize_T(P)
+        grad_x = [gradient[0]]
+        grad_y = [gradient[1]]
+
+        for i in range(num_steps):
+            bezier_coefficients = solve_linear_regression_one_tangent(T, P, grad_x, grad_y, use_left=use_left)
+            T = self.update_T(P, T, bezier_coefficients)
+
+        return bezier_coefficients, T
 
     def fit_fixed_bezier(self, P, num_steps, gradient_left, gradient_right):
 
@@ -340,13 +368,17 @@ class BezierCurveFitter:
 
                 if np.array_equal(gradient_left, np.array([0, 0])) or np.array_equal(gradient_right, np.array([0, 0])):
                     # $$$$$
-                    coefficients = self.fit_directly_bezier(P[left:right+1], steps, no_fixed_endpoints=False)
-                    T_new = self.initialize_T(P[left:right+1])
-                    distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
+                    coefficients, T_new = self.fit_directly_bezier(P[left:right+1], steps, no_fixed_endpoints=False, return_T=True)
+
+                elif np.array_equal(gradient_left, np.array([0, 0])):
+                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(P[left:right+1], steps, gradient_right, use_left=False)
+                elif np.array_equal(gradient_right, np.array([0, 0])):
+                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(P[left:right+1], steps, gradient_left, use_left=True)
+                
                 else:
                     coefficients, T_new = self.fit_fixed_bezier(P[left:right+1], steps, gradient_left, gradient_right)
-                    distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
-
+                
+                distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
                 error_matrix[i, j] = (distances**2).sum() if distances.size > 2 else 0.0
 
         dp = np.full(m, np.inf)

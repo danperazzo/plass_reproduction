@@ -1,5 +1,97 @@
 import numpy as np
 
+
+def fit_bezier_linear_one_tangent(t_data, X_data, Y_data,
+                                   x_0, x_m, y_0, y_m,
+                                   vx, vy, use_left=True):
+    t = t_data
+    t1 = 1 - t
+    b0 = t1**3
+    b1 = 3 * t * t1**2
+    b2 = 3 * t**2 * t1
+    b3 = t**3
+
+    P0 = np.array([x_0, y_0])
+    P3 = np.array([x_m, y_m])
+
+    if use_left:
+        # B1 = P0 + alpha * v / 3, B2 is free
+        A = np.zeros((2 * len(t), 3))  # columns: alpha, B2_x, B2_y
+        rhs = np.zeros(2 * len(t))
+
+        B1_term_x = (vx[0] / 3.0) * b1
+        B1_term_y = (vy[0] / 3.0) * b1
+
+        known_x = b0 * x_0 + b3 * x_m + b1 * x_0
+        known_y = b0 * y_0 + b3 * y_m + b1 * y_0
+
+        A[0::2, 0] = B1_term_x           # alpha
+        A[0::2, 1] = b2                  # B2_x
+        rhs[0::2] = X_data - known_x     # target x - known
+
+        A[1::2, 0] = B1_term_y
+        A[1::2, 2] = b2                  # B2_y
+        rhs[1::2] = Y_data - known_y
+
+    else:
+        # B2 = P3 - alpha * v / 3, B1 is free
+        A = np.zeros((2 * len(t), 3))  # columns: alpha, B1_x, B1_y
+        rhs = np.zeros(2 * len(t))
+
+        B2_term_x = -(vx[1] / 3.0) * b2
+        B2_term_y = -(vy[1] / 3.0) * b2
+
+        known_x = b0 * x_0 + b3 * x_m + b2 * x_m
+        known_y = b0 * y_0 + b3 * y_m + b2 * y_m
+
+        A[0::2, 0] = B2_term_x           # alpha
+        A[0::2, 1] = b1                  # B1_x
+        rhs[0::2] = X_data - known_x
+
+        A[1::2, 0] = B2_term_y
+        A[1::2, 2] = b1                  # B1_y
+        rhs[1::2] = Y_data - known_y
+
+    # Solve linear least squares: A @ [alpha, free_x, free_y] = rhs
+    sol, _, _, _ = np.linalg.lstsq(A, rhs, rcond=None)
+    return sol  # [alpha, x_free, y_free]
+
+
+def solve_linear_regression_one_tangent(t, points, gradient_x, gradient_y, use_left=True):
+    """
+    Fits a cubic Bézier curve given sampled points, fixed endpoints, and only one tangent direction (left or right).
+    """
+    initial_point = points[0, :]
+    final_point = points[-1, :]
+
+    x_0, y_0 = initial_point
+    x_m, y_m = final_point
+
+    res = fit_bezier_linear_one_tangent(
+        t_data=t,
+        X_data=points[:, 0],
+        Y_data=points[:, 1],
+        x_0=x_0, x_m=x_m,
+        y_0=y_0, y_m=y_m,
+        vx=gradient_x, vy=gradient_y,
+        use_left=use_left
+    )
+
+    if use_left:
+        alpha, B2_x, B2_y = res
+        B1 = initial_point + (alpha / 3) * np.array([gradient_x[0], gradient_y[0]])
+        B2 = np.array([B2_x, B2_y])
+    else:
+        alpha, B1_x, B1_y = res
+        B2 = final_point - (alpha / 3) * np.array([gradient_x[0], gradient_y[0]])
+        B1 = np.array([B1_x, B1_y])
+
+    final_coefficients = np.vstack([initial_point, B1, B2, final_point])
+    return final_coefficients
+
+
+
+
 def solve_linear_regression_fixed_points_and_gradient(t, points, gradient_x, gradient_y):
     initial_point = points[0,:]
     final_point = points[-1,:]
