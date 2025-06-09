@@ -29,6 +29,8 @@ def main():
     Bezier.rdp(args.epsilon, [0, len(P) - 1])
     Bezier.get_corners()
 
+    Corners = [Bezier.knots_idx[i] for i in Bezier.corners]
+
     Bezier.sliding_window(args.num_steps, window_size=args.window_size)
 
     fig, ax = plt.subplots()
@@ -38,6 +40,8 @@ def main():
         if i < len(Bezier.tangent_points):  
             dx, dy = Bezier.tangent_points[i]
             ax.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
+
+    ax.plot(X[Corners], Y[Corners], 'o', label='Pontos do corners', color='purple')
 
     ax.legend()
     ax.set_title('Curva Ajustada')

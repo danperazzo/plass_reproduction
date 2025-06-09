@@ -225,6 +225,7 @@ class BezierCurveFitter:
                 fitted_curves.append(fitted_curve)
                 tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
         else:
+            print(f"Tem {c} corners")
             for i in tqdm(range(c), desc="Fitting Bezier curves"):
                 left = self.knots_idx[self.corners[i]]
                 right = self.knots_idx[self.corners[(i+1) % c]]
@@ -234,35 +235,42 @@ class BezierCurveFitter:
                 else:
                     m = len(self.points[left:]) + len(self.points[:right + 1])
 
+                # Tangente do corner
                 tangent_points.append([0, 0])
 
-                for j in range(m-2):
+                for j in range(1, m - 1):
                     # Não queremos problema caso left > right
-                    left_interval = (max(left, left + j + 1 - window_size) % n)
+                    if left < right < n:
+                        left_interval = max(left, left + j - window_size)
+                        right_interval = min(right, right - (m - 1 - j) + window_size) + 1
 
-                    if left + j + 1 + window_size < n and left > right:
-                        right_interval = left + j + 1 + window_size
                     else:
-                        right_interval = (min(right, left + j + 1 + window_size - 1) % n) + 1
+                        left_interval = (max(left, left + j - window_size) % n)
+                        right_interval = (min(right, right - (m - 1 - j) + window_size) % n) + 1
+
+                    if left_interval != left:
+                        center = window_size
+                    else:
+                        center = j
 
                     if left < right:
                         P_window = self.points[left_interval:right_interval].copy()
-                        T_window = self.T[left_interval:right_interval].copy()
                     else:
                         P_window = np.concatenate([self.points[left_interval:].copy(), self.points[:right_interval].copy()], axis=0)
-                        T_window = np.concatenate((self.T[left_interval:], self.T[:right_interval]))
-
-                    if np.max(T_window) != np.min(T_window):
-                        T_window = (T_window - np.min(T_window)) / (np.max(T_window) - np.min(T_window))
-                    else:
-                        T_window = (T_window - np.min(T_window))
             
-                    T_center = self.T[(left + j + 1) % n]
+                    fitted_curve, T_window = self.fit_directly_bezier(P_window, num_steps, return_T=True)
 
-                    fitted_curve = self.fit_directly_bezier(P_window, num_steps)
+                    T_center = T_window[center]
+
+                    '''print(f"Centro: {T_center}")
+                    print(f"Idx Centro: {center}")
+                    print(f"j: {j}")
+                    print(f"Tamanho: {len(T_window)}\n")'''
+
                     fitted_curves.append(fitted_curve)
                     tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
                 
+        tangent_points = tangent_points[-self.knots_idx[self.corners[0]]:] + tangent_points[:-self.knots_idx[self.corners[0]]]
         tangent_points = np.array(tangent_points)/20
         self.fitted_curves = fitted_curves
         self.tangent_points = tangent_points
