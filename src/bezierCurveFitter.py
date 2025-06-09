@@ -151,8 +151,8 @@ class BezierCurveFitter:
             return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
 
         T  = self.initialize_T(P)
-        grad_x = [gradient[0]]
-        grad_y = [gradient[1]]
+        grad_x = [gradient[0], gradient[0]]
+        grad_y = [gradient[1], gradient[1]]
 
         for i in range(num_steps):
             bezier_coefficients = solve_linear_regression_one_tangent(T, P, grad_x, grad_y, use_left=use_left)
@@ -200,9 +200,9 @@ class BezierCurveFitter:
         return tangents
 
     
-    def sliding_window(self, knots, corners, num_steps, window_size=5):
+    def sliding_window(self, num_steps, window_size=5):
         n = len(self.points)
-        c = len(corners)
+        c = len(self.corners)
         fitted_curves = []
         tangent_points = []
 
@@ -226,8 +226,8 @@ class BezierCurveFitter:
                 tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
         else:
             for i in tqdm(range(c), desc="Fitting Bezier curves"):
-                left = knots[corners[i]]
-                right = knots[corners[(i+1) % c]]
+                left = self.knots_idx[self.corners[i]]
+                right = self.knots_idx[self.corners[(i+1) % c]]
 
                 if i != c - 1:
                     m = len(self.points[left:right + 1])
@@ -250,7 +250,7 @@ class BezierCurveFitter:
                         T_window = self.T[left_interval:right_interval].copy()
                     else:
                         P_window = np.concatenate([self.points[left_interval:].copy(), self.points[:right_interval].copy()], axis=0)
-                        T_window = self.T[left_interval:].copy() + self.T[:right_interval].copy()
+                        T_window = np.concatenate((self.T[left_interval:], self.T[:right_interval]))
 
                     if np.max(T_window) != np.min(T_window):
                         T_window = (T_window - np.min(T_window)) / (np.max(T_window) - np.min(T_window))
@@ -264,10 +264,11 @@ class BezierCurveFitter:
                     tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
                 
         tangent_points = np.array(tangent_points)/20
-        return fitted_curves, tangent_points
+        self.fitted_curves = fitted_curves
+        self.tangent_points = tangent_points
     
 
-    def rdp(self, points, epsilon, interval):
+    def do_rdp(self, epsilon, interval):
         """
         Ramer-Douglas-Peucker algorithm to simplify a curve.
 
@@ -281,14 +282,14 @@ class BezierCurveFitter:
             list: A simplified list of indexes.
         """
         # Find the point with the maximum distance from the line connecting the first and last points
-        start, end = points[interval[0]], points[interval[1]]
+        start, end = self.points[interval[0]], self.points[interval[1]]
         line_vec = end - start
         line_len = np.linalg.norm(line_vec)
         if line_len == 0:
             line_len = 1  # Avoid division by zero
 
         # Compute perpendicular distances
-        distances = np.abs(np.cross(points[interval[0]:interval[1] + 1] - start, line_vec) / line_len)
+        distances = np.abs(np.cross(self.points[interval[0]:interval[1] + 1] - start, line_vec) / line_len)
 
         # Find the index of the point with the maximum distance
         max_idx = np.argmax(distances)
@@ -297,32 +298,36 @@ class BezierCurveFitter:
         # If the maximum distance (or middle point distance) is greater than epsilon, recursively simplify
         if max_dist > epsilon:
             # Recursively simplify the two segments
-            left = self.rdp(points, epsilon, [interval[0], interval[0] + max_idx])
-            right = self.rdp(points, epsilon, [interval[0] + max_idx, interval[1]])
+            left = self.do_rdp(epsilon, [interval[0], interval[0] + max_idx])
+            right = self.do_rdp(epsilon, [interval[0] + max_idx, interval[1]])
 
             # Combine the results, excluding the duplicate indexes at the junction
             return left[:-1] + right
         else:
             # If no point is farther than epsilon, return the index of the endpoints
             return interval
+        
+
+    def rdp(self, epsilon, interval):
+        self.knots_idx = self.do_rdp(epsilon, interval)
 
 
     ######################## TO TEST ########################
     # Corners são indices de knots
-    def get_corners(self, P, knots, cos=math.cos((3 * math.pi) / 4)):
-        k = len(knots)
+    def get_corners(self, cos=math.cos((3 * math.pi) / 4)):
+        k = len(self.knots_idx)
 
         corners = []
 
         for i in range(k):
 
-            previous_idx = knots[i - 1]
-            current_idx = knots[i]
-            next_idx = knots[(i + 1) % k]
+            previous_idx = self.knots_idx[i - 1]
+            current_idx = self.knots_idx[i]
+            next_idx = self.knots_idx[(i + 1) % k]
 
             # P: previus / C: current / N: next
-            PC = P[previous_idx] - P[current_idx]
-            NC = P[next_idx] - P[current_idx]
+            PC = self.points[previous_idx] - self.points[current_idx]
+            NC = self.points[next_idx] - self.points[current_idx]
 
             mag_PC = np.linalg.norm(PC)
             mag_NC = np.linalg.norm(NC)
@@ -330,10 +335,10 @@ class BezierCurveFitter:
             cos_knot = np.dot(PC, NC) / (mag_PC * mag_NC)
 
 
-            if cos_knot < cos:
+            if cos_knot > cos:
                 corners.append(i)
 
-        return corners
+        self.corners = corners
 
 
     def bezier_dist(self, P, T, coefficients):
@@ -341,45 +346,39 @@ class BezierCurveFitter:
         bezier_points = matrix_t @ coefficients
         distances = np.linalg.norm(P - bezier_points, axis=1)
         return distances
-
     
-    def get_knots(self, P, tangents, epsilon, steps = 5, disable_rdp=False,  tolerance=0.5):
-        n = len(P)
 
-        if not disable_rdp:
-            poli_knots_idx = self.rdp(P, epsilon, [0, n - 1])
-            corners = self.get_corners(P, poli_knots_idx)
-
-        else:
-            poli_knots_idx = np.arange(0, n, 1)
-
-        m = len(poli_knots_idx)
+    def make_error_matrix(self, steps = 5):
+        m = len(self.knots_idx)
 
         error_matrix = np.zeros((m, m), dtype=float)
 
         for i in tqdm(range(m), desc="Creating the error matrix"):
-            left = poli_knots_idx[i]
-            gradient_left = tangents[left]
+            left = self.knots_idx[i]
+            gradient_left = self.tangent_points[left]
 
             for j in range(i + 1, m):
                 # Todas as curvas de bezier de P_i até todos os próximos pontos
-                right = poli_knots_idx[j]
-                gradient_right = tangents[right]
+                right = self.knots_idx[j]
+                gradient_right = self.tangent_points[right]
 
-                if np.array_equal(gradient_left, np.array([0, 0])) or np.array_equal(gradient_right, np.array([0, 0])):
-                    # $$$$$
-                    coefficients, T_new = self.fit_directly_bezier(P[left:right+1], steps, no_fixed_endpoints=False, return_T=True)
-
+                if np.array_equal(gradient_left, np.array([0, 0])) and np.array_equal(gradient_right, np.array([0, 0])):
+                    coefficients, T_new = self.fit_directly_bezier(self.points[left:right+1], steps, no_fixed_endpoints=False, return_T=True)
                 elif np.array_equal(gradient_left, np.array([0, 0])):
-                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(P[left:right+1], steps, gradient_right, use_left=False)
+                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(self.points[left:right+1], steps, gradient_right, use_left=False)
                 elif np.array_equal(gradient_right, np.array([0, 0])):
-                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(P[left:right+1], steps, gradient_left, use_left=True)
-                
+                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(self.points[left:right+1], steps, gradient_left, use_left=True)
                 else:
-                    coefficients, T_new = self.fit_fixed_bezier(P[left:right+1], steps, gradient_left, gradient_right)
+                    coefficients, T_new = self.fit_fixed_bezier(self.points[left:right+1], steps, gradient_left, gradient_right)
                 
-                distances = self.bezier_dist(P[left:right+1], T_new, coefficients)
+                distances = self.bezier_dist(self.points[left:right+1], T_new, coefficients)
                 error_matrix[i, j] = (distances**2).sum() if distances.size > 2 else 0.0
+        
+        self.error_matrix = error_matrix
+    
+
+    def get_knots(self, tolerance = 0.5):
+        m = len(self.knots_idx)
 
         dp = np.full(m, np.inf)
         prev = np.full(m, -1, dtype=int)
@@ -387,7 +386,7 @@ class BezierCurveFitter:
 
         for j in range(1, m):
             for i in range(j):
-                cost = dp[i] + tolerance + error_matrix[i, j]
+                cost = dp[i] + tolerance + self.error_matrix[i, j]
                 if cost < dp[j]:
                     dp[j] = cost
                     prev[j] = i
@@ -396,10 +395,10 @@ class BezierCurveFitter:
         indices = []
         cur = m - 1
         while cur != 0:
-            indices.append(poli_knots_idx[cur])
+            indices.append(self.knots_idx[cur])
             cur = prev[cur]
         indices.append(0)
         indices.reverse()
 
-        knots = [P[idx] for idx in indices]
-        return knots, indices, poli_knots_idx
+        self.final_knots = np.array([self.points[idx] for idx in indices])
+        self.final_knots_idx = indices

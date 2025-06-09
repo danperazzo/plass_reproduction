@@ -38,8 +38,8 @@ def fit_bezier_linear_one_tangent(t_data, X_data, Y_data,
         A = np.zeros((2 * len(t), 3))  # columns: alpha, B1_x, B1_y
         rhs = np.zeros(2 * len(t))
 
-        B2_term_x = -(vx[1] / 3.0) * b2
-        B2_term_y = -(vy[1] / 3.0) * b2
+        B2_term_x = -(vx[0] / 3.0) * b2
+        B2_term_y = -(vy[0] / 3.0) * b2
 
         known_x = b0 * x_0 + b3 * x_m + b2 * x_m
         known_y = b0 * y_0 + b3 * y_m + b2 * y_m
