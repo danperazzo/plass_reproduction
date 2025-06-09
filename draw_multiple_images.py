@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--input_error', type=str, default='', help='Path to the input file containing error matrix.')
     parser.add_argument('--output_file', type=str, default='reconst_3.svg', help='Path to save the output animation.')
     parser.add_argument('--output_bezier', type=str, default='bezier_curves.txt', help='Path to save the Bezier curves.')
-    parser.add_argument('--epsilon', type=int, default=2, help='Epsilon value for the RDP algorithm.')
+    parser.add_argument('--epsilon', type=float, default=2, help='Epsilon value for the RDP algorithm.')
     parser.add_argument('--disable_rdp',type=bool, default=False, help='Use RDP compression for the curve fitting.')
     parser.add_argument('--tolerance', type=float, default=0.005, help='Tolerance for the dynamic programming algorithm.')
 

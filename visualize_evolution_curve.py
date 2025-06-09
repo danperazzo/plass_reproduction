@@ -26,18 +26,18 @@ def main():
     # --- Código inicial ---
     Bezier = BezierCurveFitter(P)
 
-    knots = Bezier.rdp(P, args.epsilon, [0, len(P) - 1])
-    corners = Bezier.get_corners(P, knots)
+    Bezier.rdp(args.epsilon, [0, len(P) - 1])
+    Bezier.get_corners()
 
-    _, tangent_points = Bezier.sliding_window(knots, corners, args.num_steps, window_size=args.window_size)
+    Bezier.sliding_window(args.num_steps, window_size=args.window_size)
 
     fig, ax = plt.subplots()
     ax.plot(P[:, 0], P[:, 1], label='Dados Originais')
 
     for i, (x, y) in enumerate(zip(X, Y)):
-        if i < len(tangent_points):  
-            dx, dy = tangent_points[i]
-            ax.quiver(x, y, dy, -dx, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
+        if i < len(Bezier.tangent_points):  
+            dx, dy = Bezier.tangent_points[i]
+            ax.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
 
     ax.legend()
     ax.set_title('Curva Ajustada')
@@ -46,7 +46,7 @@ def main():
     plt.axis('equal')
     plt.show()
 
-    fig, ax = plt.subplots()
+    '''fig, ax = plt.subplots()
 
     x_min, x_max = np.min(X) - 10, np.max(X) + 10
     y_min, y_max = np.min(Y) - 10, np.max(Y) + 10
@@ -65,15 +65,15 @@ def main():
         steps = args.num_steps
         num_points = 50
 
-        knots, indices = Bezier.get_knots(P, tangent_points, epsilon, steps)
+        Bezier.get_knots()
         knots = np.array(knots)
 
         points_from_knots_bezier = []
 
-        for i in range(len(indices) - 1):
-            idx = indices[i]
-            next_idx = indices[i + 1]
-            curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, tangent_points[idx], tangent_points[next_idx])
+        for i in range(len(Bezier.indices) - 1):
+            idx = Bezier.indices[i]
+            next_idx = Bezier.indices[i + 1]
+            curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, Bezier.tangent_points[idx], Bezier.tangent_points[next_idx])
             curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
             points_from_knots_bezier.append(curve_points)
 
@@ -86,7 +86,7 @@ def main():
         print(epsilon)
 
     anim = animation.FuncAnimation(fig, update, frames=range(9, -1, -2), interval=1500)
-    anim.save(args.output_file, writer='pillow')
+    anim.save(args.output_file, writer='pillow')'''
 
 
 
