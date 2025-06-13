@@ -8,10 +8,10 @@ from src.bezierCurveFitter import BezierCurveFitter
 def main():
     parser = argparse.ArgumentParser(description='Visualize the evolution of a Bezier curve fitting process.')
     parser.add_argument('--window_size', type=int, default=10, help='Size of the sliding window for tangent calculation.')
-    parser.add_argument('--num_steps', type=int, default=1, help='Number of steps for the fitting process.')
+    parser.add_argument('--num_steps', type=int, default=100, help='Number of steps for the fitting process.')
     parser.add_argument('--input_file', type=str, default='examples/3-trace.txt', help='Path to the input file containing points.')
     parser.add_argument('--output_file', type=str, default='RDP_epsilon10.gif', help='Path to save the output animation.')
-    parser.add_argument('--epsilon', type=int, default=2, help='Epsilon value for the RDP algorithm.')
+    parser.add_argument('--epsilon', type=float, default=2, help='Epsilon value for the RDP algorithm.')
     args = parser.parse_args()
 
 
@@ -42,6 +42,8 @@ def main():
             ax.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
 
     ax.plot(X[Corners], Y[Corners], 'o', label='Pontos do corners', color='purple')
+
+    ax.scatter(X[0], Y[0])
 
     ax.legend()
     ax.set_title('Curva Ajustada')
