@@ -96,19 +96,15 @@ def main():
     ax1.set_title(f'1 - ε = {args.epsilon:.2f}')
     ax1.plot(points_from_knots_bezier[:, 0], points_from_knots_bezier[:, 1], label='Pontos da curva', color='red')
 
-    #ax1.plot(X[Bezier.knots_idx], Y[Bezier.knots_idx], 'o', label='Pontos do RDP', color='blue')
-
+    ax1.plot(X[Bezier.knots_idx], Y[Bezier.knots_idx], 'o', label='Pontos do RDP', color='blue')
     #ax1.plot(X[Corners], Y[Corners], 'o', label='Pontos do corners', color='purple')
-
-    ax1.plot(Bezier.final_knots[:, 0], Bezier.final_knots[:, 1],'o', label='Pontos de controle', color='orange')
+    #ax1.plot(Bezier.final_knots[:, 0], Bezier.final_knots[:, 1],'o', label='Pontos de controle', color='orange')
 
     ax2.set_title(f'2 - ε = {args.epsilon:.2f}')
     ax2.plot(points_from_knots_bezier[:, 0], points_from_knots_bezier[:, 1], label='Pontos da curva', color='red')
 
     #ax2.plot(X[Bezier.knots_idx], Y[Bezier.knots_idx], 'o', label='Pontos do RDP', color='blue')
-
     ax2.plot(X[Corners], Y[Corners], 'o', label='Pontos do corners', color='purple')
-
     #ax2.plot(Bezier.final_knots[:, 0], Bezier.final_knots[:, 1],'o', label='Pontos de controle', color='orange')
 
     plt.show()

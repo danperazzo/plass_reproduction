@@ -125,6 +125,29 @@ class BezierCurveFitter:
                 return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
             else:
                 return np.array([P[0], P_1, P_2, P[1]])
+        elif P.shape[0] == 3:
+            print("Fitting directly Bezier with 3 points")
+            # Se você quer garantir que passa por P[1] no parâmetro t calculado:
+            T = self.initialize_T(P)
+            t = T[1]  # parâmetro do ponto médio
+            
+            # Ajustar os pesos baseado no t real
+            # Para uma quadrática que passa por P[1] em t:
+            # Q1 = (P[1] - (1-t)²*P[0] - t²*P[2]) / (2*t*(1-t))
+            
+            if abs(2*t*(1-t)) > 1e-10:
+                Q1 = (P[1] - (1-t)**2*P[0] - t**2*P[2]) / (2*t*(1-t))
+                P_1 = (1/3)*P[0] + (2/3)*Q1
+                P_2 = (2/3)*Q1 + (1/3)*P[2]
+            else:
+                # Fallback para sua solução original
+                P_1 = P[0] + 2*(P[1] - P[0]) / 3
+                P_2 = P[2] + 2*(P[1] - P[2]) / 3
+            
+            if return_T:
+                return np.array([P[0], P_1, P_2, P[2]]), T
+            else:
+                return np.array([P[0], P_1, P_2, P[2]])
 
         T  = self.initialize_T(P)
 
@@ -145,13 +168,129 @@ class BezierCurveFitter:
     
 
     def fit_fixed_bezier_single_gradient(self, P, num_steps, gradient, use_left=True):
-        if P.shape[0] == 2:
-            P_1 = P[0] + (P[1] - P[0]) / 3
-            P_2 = P[0] + 2*(P[1] - P[0]) / 3
-
-            return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
-
         T  = self.initialize_T(P)
+
+
+        if P.shape[0] == 2:
+            tangent = np.array(gradient) / np.linalg.norm(gradient)
+            
+            if use_left:
+                # Tangente esquerda fixa
+                # P1 = P[0] + alpha * tangent (alpha a determinar)
+                # P2 livre, mas vamos colocá-lo alinhado com P1-P[1]
+                
+                # Estimar alpha baseado na distância entre pontos
+                dist = np.linalg.norm(P[1] - P[0])
+                alpha = dist / 3  # Estimativa inicial
+                
+                P1 = P[0] + alpha * tangent
+                # P2 na linha entre P1 e P[1], mais próximo de P[1]
+                P2 = P1 + (2/3) * (P[1] - P1)
+            else:
+                # Tangente direita fixa
+                # P2 = P[1] - beta * tangent (beta a determinar)
+                # P1 livre, mas vamos colocá-lo alinhado com P[0]-P2
+                
+                dist = np.linalg.norm(P[1] - P[0])
+                beta = dist / 3
+                
+                P2 = P[1] - beta * tangent
+                # P1 na linha entre P[0] e P2, mais próximo de P[0]
+                P1 = P[0] + (1/3) * (P2 - P[0])
+            
+            return np.array([P[0], P1, P2, P[1]]), T
+        
+        elif P.shape[0] == 3:
+            tangent = np.array(gradient) / np.linalg.norm(gradient)
+            
+            # Calcular parâmetro t do ponto médio
+            d1 = np.linalg.norm(P[1] - P[0])
+            d2 = np.linalg.norm(P[2] - P[1])
+            t_mid = d1 / (d1 + d2) if (d1 + d2) > 0 else 0.5
+            
+            if use_left:
+                # C0 = P[0], C3 = P[2]
+                # C1 = P[0] + alpha * tangent (fixo em direção)
+                # C2 = ? (a determinar)
+                
+                # Para Bézier em t_mid: B(t_mid) = P[1]
+                t = t_mid
+                B0 = (1-t)**3
+                B1 = 3*(1-t)**2*t
+                B2 = 3*(1-t)*t**2
+                B3 = t**3
+                
+                # B0*P[0] + B1*(P[0] + alpha*tangent) + B2*C2 + B3*P[2] = P[1]
+                # B1*alpha*tangent + B2*C2 = P[1] - (B0+B1)*P[0] - B3*P[2]
+                
+                # Temos 2 equações (x,y) e 3 incógnitas (alpha, C2_x, C2_y)
+                # Adicionar restrição: C2 na direção P[2]->P[1]
+                direction_C2 = P[1] - P[2]
+                if np.linalg.norm(direction_C2) > 0:
+                    direction_C2 = direction_C2 / np.linalg.norm(direction_C2)
+                else:
+                    direction_C2 = np.array([1, 0])
+                
+                # C2 = P[2] + beta * direction_C2
+                # Substituindo:
+                # B1*alpha*tangent + B2*(P[2] + beta*direction_C2) = target
+                # B1*alpha*tangent + B2*beta*direction_C2 = target - B2*P[2]
+                
+                target = P[1] - (B0+B1)*P[0] - B3*P[2]
+                rhs = target - B2*P[2]
+                
+                # Sistema 2x2: [tangent, direction_C2] * [B1*alpha, B2*beta]' = rhs
+                A = np.column_stack([B1*tangent, B2*direction_C2])
+                params = np.linalg.lstsq(A, rhs, rcond=None)[0]
+                alpha, beta = params
+                
+                alpha = max(0.1, abs(alpha))
+                beta = max(0.1, abs(beta))
+                
+                C0 = P[0]
+                C1 = P[0] + alpha * tangent
+                C2 = P[2] + beta * direction_C2
+                C3 = P[2]
+                
+            else:
+                # Tangente direita fixa
+                # C2 = P[2] - beta * tangent
+                # C1 = ? (a determinar)
+                
+                t = t_mid
+                B0 = (1-t)**3
+                B1 = 3*(1-t)**2*t
+                B2 = 3*(1-t)*t**2
+                B3 = t**3
+                
+                # Direção para C1: P[0]->P[1]
+                direction_C1 = P[1] - P[0]
+                if np.linalg.norm(direction_C1) > 0:
+                    direction_C1 = direction_C1 / np.linalg.norm(direction_C1)
+                else:
+                    direction_C1 = np.array([1, 0])
+                
+                # C1 = P[0] + alpha * direction_C1
+                # B1*(P[0] + alpha*direction_C1) + B2*(P[2] - beta*tangent) = P[1] - B0*P[0] - B3*P[2]
+                
+                target = P[1] - B0*P[0] - B3*P[2]
+                rhs = target - B1*P[0] - B2*P[2]
+                
+                A = np.column_stack([B1*direction_C1, -B2*tangent])
+                params = np.linalg.lstsq(A, rhs, rcond=None)[0]
+                alpha, beta = params
+                
+                alpha = max(0.1, abs(alpha))
+                beta = max(0.1, abs(beta))
+                
+                C0 = P[0]
+                C1 = P[0] + alpha * direction_C1
+                C2 = P[2] - beta * tangent
+                C3 = P[2]
+            
+            return np.array([C0, C1, C2, C3]), T
+            
+
         grad_x = [gradient[0], gradient[0]]
         grad_y = [gradient[1], gradient[1]]
 
@@ -228,7 +367,6 @@ class BezierCurveFitter:
             for i in tqdm(range(c), desc="Fitting Bezier curves"):
                 left = self.knots_idx[self.corners[i]]
                 right = self.knots_idx[self.corners[(i+1) % c]]
-                #print(f"Left: {left}, Right: {right}")
 
                 if i != c - 1:
                     m = len(self.points[left:right + 1])
@@ -285,13 +423,17 @@ class BezierCurveFitter:
         """
         # Find the point with the maximum distance from the line connecting the first and last points
         start, end = self.points[interval[0]], self.points[interval[1]]
-        line_vec = end - start
-        line_len = np.linalg.norm(line_vec)
-        if line_len == 0:
-            line_len = 1  # Avoid division by zero
 
-        # Compute perpendicular distances
-        distances = np.abs(np.cross(self.points[interval[0]:interval[1] + 1] - start, line_vec) / line_len)
+        if np.array_equal(start, end):
+            distances = np.linalg.norm(self.points[interval[0]:interval[1] + 1] - start, axis=1)
+        else:
+            line_vec = end - start
+            line_len = np.linalg.norm(line_vec)
+            if line_len == 0:
+                line_len = 1  # Avoid division by zero
+
+            # Compute perpendicular distances
+            distances = np.abs(np.cross(self.points[interval[0]:interval[1] + 1] - start, line_vec) / line_len)
 
         # Find the index of the point with the maximum distance
         max_idx = np.argmax(distances)
@@ -314,7 +456,6 @@ class BezierCurveFitter:
         self.knots_idx = self.do_rdp(epsilon, interval)
 
 
-    ######################## TO TEST ########################
     # Corners são indices de knots
     def get_corners(self, cos=math.cos((3 * math.pi) / 4)):
         k = len(self.knots_idx)
@@ -326,6 +467,12 @@ class BezierCurveFitter:
             previous_idx = self.knots_idx[i - 1]
             current_idx = self.knots_idx[i]
             next_idx = self.knots_idx[(i + 1) % k]
+
+            if np.array_equal(self.points[previous_idx], self.points[current_idx]):
+                previous_idx = self.knots_idx[(i - 2) % k]
+            elif np.array_equal(self.points[next_idx], self.points[current_idx]):
+                next_idx = self.knots_idx[(i + 2) % k]
+
 
             # P: previus / C: current / N: next
             PC = self.points[previous_idx] - self.points[current_idx]
