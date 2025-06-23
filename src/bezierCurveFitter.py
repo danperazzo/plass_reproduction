@@ -2,7 +2,7 @@ import numpy as np
 import math
 from tqdm import tqdm
 
-from src.utils import solve_linear_regression_fixed_points_and_gradient, solve_linear_regression_one_tangent
+from src.utils import solve_linear_regression_fixed_points_and_gradient, solve_linear_regression_one_tangent, encontrar_bezier_otima
 
 class BezierCurveFitter:
     """Handles the fitting of Bezier curves to point sets."""
@@ -117,6 +117,7 @@ class BezierCurveFitter:
     
     def fit_directly_bezier(self, P, num_steps, no_fixed_endpoints=True, return_T=False):
         if P.shape[0] == 2:
+            print("Fitting directly Bezier with 2 points")
             P_1 = P[0] + (P[1] - P[0]) / 3
             P_2 = P[0] + 2*(P[1] - P[0]) / 3
 
@@ -169,12 +170,9 @@ class BezierCurveFitter:
             return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
 
         T  = self.initialize_T(P)
-        grad_x = [gradient_left[0], gradient_right[0]]
-        grad_y = [gradient_left[1], gradient_right[1]]
-
 
         for i in range(num_steps):
-            bezier_coefficients = solve_linear_regression_fixed_points_and_gradient(T, P, grad_x, grad_y)
+            bezier_coefficients = encontrar_bezier_otima(P, T, gradient_left, gradient_right)
             T = self.update_T(P, T, bezier_coefficients)
 
         return bezier_coefficients, T
@@ -248,7 +246,6 @@ class BezierCurveFitter:
                     else:
                         left_interval = (max(left, left + j - window_size) % n)
                         right_interval = (min(right, right - (m - 1 - j) + window_size) % n) + 1
-                        #print(f"j: {j}, Left Interval: {left_interval}, Right Interval: {right_interval}")
 
                     if left_interval != left:
                         center = window_size
@@ -259,16 +256,10 @@ class BezierCurveFitter:
                         P_window = self.points[left_interval:right_interval].copy()
                     else:
                         P_window = np.concatenate([self.points[left_interval:].copy(), self.points[:right_interval].copy()], axis=0)
-                        #print(len(P_window))
             
                     fitted_curve, T_window = self.fit_directly_bezier(P_window, num_steps, return_T=True)
 
                     T_center = T_window[center]
-
-                    '''print(f"Centro: {T_center}")
-                    print(f"Idx Centro: {center}")
-                    print(f"j: {j}")
-                    print(f"Tamanho: {len(T_window)}\n")'''
 
                     fitted_curves.append(fitted_curve)
                     tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
@@ -381,12 +372,14 @@ class BezierCurveFitter:
                     coefficients, T_new = self.fit_fixed_bezier_single_gradient(self.points[left:right+1], steps, gradient_left, use_left=True)
                 else:
                     coefficients, T_new = self.fit_fixed_bezier(self.points[left:right+1], steps, gradient_left, gradient_right)
+
                 
                 distances = self.bezier_dist(self.points[left:right+1], T_new, coefficients)
                 error_matrix[i, j] = (distances**2).sum() if distances.size > 2 else 0.0
+                
         
         self.error_matrix = error_matrix
-    
+
 
     def get_knots(self, tolerance = 0.5):
         m = len(self.knots_idx)

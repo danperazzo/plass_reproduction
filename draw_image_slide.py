@@ -46,7 +46,7 @@ def main():
 
 
     steps = args.num_steps
-    num_points = 50
+    num_points = 150
     
     Bezier.rdp(args.epsilon, [0, len(P) - 1])
 
@@ -61,7 +61,7 @@ def main():
 
     
     def update_tolerance(val):
-        tolerance = 10**slider_tolerance.val
+        tolerance = 10**slider_tolerance.val - 1
 
         ax.clear()
 
@@ -77,19 +77,26 @@ def main():
             gradient_right = Bezier.tangent_points[next_idx]
 
             if np.array_equal(gradient_left, np.array([0, 0])) and np.array_equal(gradient_right, np.array([0, 0])):
-                curve_bezier, _ = Bezier.fit_directly_bezier(P[idx:next_idx + 1], steps, no_fixed_endpoints=False, return_T=True)
+                curve_bezier, _ = Bezier.fit_directly_bezier(Bezier.points[idx:next_idx + 1], steps, no_fixed_endpoints=False, return_T=True)
             elif np.array_equal(gradient_left, np.array([0, 0])):
-                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(P[idx:next_idx + 1], steps, gradient_right, use_left=False)
+                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(Bezier.points[idx:next_idx + 1], steps, gradient_right, use_left=False)
             elif np.array_equal(gradient_right, np.array([0, 0])):
-                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(P[idx:next_idx + 1], steps, gradient_left, use_left=True)
+                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(Bezier.points[idx:next_idx + 1], steps, gradient_left, use_left=True)
             else:
-                curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, gradient_left, gradient_right)
+                curve_bezier, _ = Bezier.fit_fixed_bezier(Bezier.points[idx:next_idx + 1], steps, gradient_left, gradient_right)
+
+            ax.scatter(curve_bezier[1:3, 0], curve_bezier[1:3, 1], s=1, color='gray', alpha=0.5)
             curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
             points_from_knots_bezier.append(curve_points)
 
         points_from_knots_bezier = np.concatenate(points_from_knots_bezier, axis=0)
 
         ax.plot(X, Y, label='Dados Originais')
+
+        for i in Bezier.final_knots_idx:
+            x, y = Bezier.points[i]
+            dx, dy = Bezier.tangent_points[i]
+            ax.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
 
         #ax.plot(X[Bezier.knots_idx], Y[Bezier.knots_idx], 'o', label='Pontos do RDP', color='blue')
 
