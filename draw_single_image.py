@@ -14,11 +14,11 @@ def write_bezier_curves(bezier_curves, filename):
 def main():
     parser = argparse.ArgumentParser(description='Visualize the evolution of a Bezier curve fitting process.')
     parser.add_argument('--window_size', type=int, default=10, help='Size of the sliding window for tangent calculation.')
-    parser.add_argument('--num_steps', type=int, default=100, help='Number of steps for the fitting process.')
-    parser.add_argument('--input_file', type=str, default='examples/g-150.txt', help='Path to the input file containing points.')
+    parser.add_argument('--num_steps', type=int, default=9, help='Number of steps for the fitting process.')
+    parser.add_argument('--input_file', type=str, default='examples/S-trace.txt', help='Path to the input file containing points.')
     parser.add_argument('--input_error', type=str, default='', help='Path to the input file containing error matrix.')
-    parser.add_argument('--output_file', type=str, default='reconst_3.svg', help='Path to save the output animation.')
-    parser.add_argument('--output_bezier', type=str, default='bezier_curves.txt', help='Path to save the Bezier curves.')
+    parser.add_argument('--output_file', type=str, default='outputs_svg/S_svg.svg', help='Path to save the output animation.')
+    parser.add_argument('--output_bezier', type=str, default='outputs/S_bezier.txt', help='Path to save the Bezier curves.')
     parser.add_argument('--epsilon', type=float, default=2, help='Epsilon value for the RDP algorithm.')
     parser.add_argument('--disable_rdp',type=bool, default=False, help='Use RDP compression for the curve fitting.')
     parser.add_argument('--tolerance', type=float, default=0.005, help='Tolerance for the dynamic programming algorithm.')
@@ -86,11 +86,6 @@ def main():
     points_from_knots_bezier = np.concatenate(points_from_knots_bezier, axis=0)
 
     ax.plot(X, Y, label='Dados Originais')
-
-    #ax.plot(X[Bezier.knots_idx], Y[Bezier.knots_idx], 'o', label='Pontos do RDP', color='blue')
-
-    ###
-    #ax.plot(X[Corners], Y[Corners], 'o', label='Pontos do corners', color='purple')
 
     ax.set_title(f'ε = {args.epsilon:.2f}')
     ax.plot(points_from_knots_bezier[:, 0], points_from_knots_bezier[:, 1], label='Pontos da curva', color='red')
