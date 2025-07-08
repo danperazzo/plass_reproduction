@@ -1,10 +1,8 @@
-# Bezier Curve Fitting - Piecewise Parametric Cubics Reproduction
+# [Re] Curve-fitting with piecewise parametric cubics
 
-This repository provides a reproduction of the classic algorithm described in **“Piecewise Parametric Cubics for Data Fitting”** by Michael Plass and Maureen Stone (1983). It implements a dynamic-programming-based method for automatically segmenting and fitting cubic Bézier curves to a set of 2D data points.  
+This repository provides a reproduction of the classic paper [Curve-fitting with piecewise parametric cubics](https://dl.acm.org/doi/10.1145/800059.801153) by Michael Plass and Maureen Stone (1983). It implements a dynamic-programming-based method for automatically segmenting and fitting piecewise cubic Bézier curves to a sequence of 2D data points.  
 
-The script supports visualization of the curve-fitting process, uses the Ramer–Douglas–Peucker (RDP) algorithm to simplify point sets, and exports both the fitted curves and an annotated plot.
-
----
+The code supports visualization of the curve-fitting process, uses the Ramer–Douglas–Peucker algorithm to simplify point sets, and exports both the fitted curves and an annotated plot.
 
 ## Features
 
@@ -14,8 +12,6 @@ The script supports visualization of the curve-fitting process, uses the Ramer�
 ✅ Saves curve parameters to file  
 ✅ Supports alternative test figures
 
----
-
 ## Getting Started
 
 You will need **Python 3.10+** and these packages:
@@ -23,15 +19,16 @@ You will need **Python 3.10+** and these packages:
 ```bash
 pip install numpy matplotlib
 ```
-Usage
-The provided script is named example.py. You can run it like this:
+
+## Usage
+You can run the code like this:
 
 ```bash
 python draw_single_image.py --input_file examples/S-trace.txt --output_file outputs_svg/S_svg.png
 ```
 
-Testing on Other Figures
-You can experiment with other point data stored in the examples folder. For instance, to test on S.txt, run:
+## Testing on Other Figures
+You can experiment with other point data stored in the examples folder. For instance, to test on C.txt, run:
 
 ```bash
 python draw_single_image.py --input_file examples/C.txt --output_file outputs_svg/C_txt.png
@@ -39,7 +36,7 @@ python draw_single_image.py --input_file examples/C.txt --output_file outputs_sv
 
 The output curves shall be in outputs.
 
-Acknowledgment
-This project is a reproduction of the algorithm presented in:
+## Acknowledgment
+The code was written by Daniel Perazzo and Davi Guimarães Nunes Sena Castro.
 
-Michael Plass and Maureen Stone. “Piecewise Parametric Cubics for Data Fitting.” SIGGRAPH, 1983.
+This project is the product of a [course](https://lhf.impa.br/cursos/tmg/) at IMPA.
