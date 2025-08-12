@@ -1,0 +1,127 @@
+# To be filled by the author(s) at the time of submission
+# -------------------------------------------------------
+
+# Title of the article:
+#  - For a successful replication, it should be prefixed with "[Re]"
+#  - For a failed replication, it should be prefixed with "[¬Re]"
+#  - For other article types, no instruction (but please, not too long)
+title: "[Re] Curve-Fitting with Piecewise Parametric Cubics"
+
+# List of authors with name, orcid number, email and affiliation
+# Affiliation "*" means contact author (required even for single-authored papers)
+# To include author suffix format name as Last Suffix, First M.I. (e.g. Schackart III, Kenneth E.)
+authors:
+  - name: Daniel Perazzo
+    orcid: 0000-0001-6121-9477
+    email: daniel.perazzo@impa.br
+    affiliations: 1,*           # * is for contact author
+    
+  - name: Davi Guimarães Nunes Sena Castro
+    orcid:
+    email: davi.guima.castro@outlook.com
+    affiliations: 2
+
+  - name: Luiz Velho
+    orcid: 0000-0001-5489-4909
+    email: lvelho@impa.br
+    affiliations: 1
+    
+  - name: Luiz Henrique de Figueiredo
+    orcid: 0000-0001-5683-693X
+    email: lhf@impa.br
+    affiliations: 1
+    
+
+# List of affiliations with code (corresponding to author affiliations), name
+# and address. You can also use these affiliations to add text such as "Equal
+# contributions" as name (with no address).
+affiliations:
+  - code:    1
+    name:    IMPA
+    address: Rio de Janeiro, Brazil
+    
+  - code:    2
+    name:    Universidade Federal Fluminense
+    address: Niterói, Brazil
+
+# List of keywords (adding the programming language might be a good idea)
+keywords: rescience c, rescience x, Python, curve fitting, geometric modeling, computer graphics
+
+# Code URL and DOI/SWH (url is mandatory for replication, doi after acceptance)
+# You can get a DOI for your code from Zenodo, or an SWH identifier from
+# Software Heritage.
+#   see https://guides.github.com/activities/citable-code/
+code:
+  - url: https://github.com/danperazzo/plass_reproduction
+  - doi: 
+  - swh: 
+
+# Data URL and DOI (optional if no data)
+data:
+  - url:
+  - doi:
+
+# Information about the original article that has been replicated
+replication:
+ - cite: "Michael Plass and Maureen Stone. 1983. Curve-fitting with piecewise parametric cubics. SIGGRAPH Comput. Graph. 17, 3 (July 1983), 229–239"
+ - bib:  Plass-Stone-1983
+ - url:  https://dl.acm.org/doi/10.1145/800059.801153
+ - doi:  10.1145/800059.801153
+
+# Don't forget to surround abstract with double quotes
+abstract: "We report on a replication of the paper 'Curve-Fitting with Piecewise Parametric Cubics' by Michael Plass and Maureen Stone presented at SIGGRAPH 1983. Their paper proposes a method for fitting a cubic spline to a sequence of points. The method uses dynamic programming to fit a global spline composed of selected cubic Bézier curves that fit the data locally. Our code and data are publicly available."
+
+# Bibliography file (yours)
+bibliography: bibliography.bib
+  
+# Type of the article
+# Type can be:
+#  * Editorial
+#  * Letter
+#  * Replication
+type: Replication
+
+# Scientific domain of the article (e.g. Computational Neuroscience)
+#  (one domain only & try to be not overly specific)
+domain: Computer Graphics
+
+# Coding language (main one only if several)
+language: Python
+
+  
+# To be filled by the author(s) after acceptance
+# -----------------------------------------------------------------------------
+
+# For example, the URL of the GitHub issue where review actually occured
+review: 
+  - url: 
+
+contributors:
+  - name:
+    orcid: 
+    role: editor
+  - name:
+    orcid:
+    role: reviewer
+  - name:
+    orcid:
+    role: reviewer
+
+# This information will be provided by the editor
+dates:
+  - received:  November 1, 2018
+  - accepted:
+  - published: 
+
+# This information will be provided by the editor
+article:
+  - number: # Article number will be automatically assigned during publication
+  - doi:    # DOI from Zenodo
+  - url:    # Final PDF URL (Zenodo or rescience website?)
+
+# This information will be provided by the editor
+journal:
+  - name:   "ReScience C"
+  - issn:   2430-3658
+  - volume: 4
+  - issue:  1
