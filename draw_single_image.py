@@ -12,20 +12,20 @@ def write_bezier_curves(bezier_curves, filename):
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize the evolution of a Bezier curve fitting process.')
-    parser.add_argument('--window_size', type=int, default=10, help='Size of the sliding window for tangent calculation.')
-    parser.add_argument('--num_steps', type=int, default=9, help='Number of steps for the fitting process.')
+    parser.add_argument('--window_size', type=int, default=10, help='Size of the sliding window for tangent calculation. (Default 10)')
+    parser.add_argument('--num_steps', type=int, default=9, help='Number of steps for the fitting process. (Default 9)')
     parser.add_argument('--input_file', type=str, default='examples/S-trace.txt', help='Path to the input file containing points.')
     parser.add_argument('--input_error', type=str, default='', help='Path to the input file containing error matrix.')
     parser.add_argument('--output_file', type=str, default='outputs_svg/S_svg.svg', help='Path to save the output animation.')
     parser.add_argument('--output_bezier', type=str, default='outputs/S_bezier.txt', help='Path to save the Bezier curves.')
-    parser.add_argument('--epsilon', type=float, default=2, help='Epsilon value for the RDP algorithm.')
+    parser.add_argument('--epsilon', type=float, default=2, help='Epsilon value for the RDP algorithm. (default 2)')
     parser.add_argument('--disable_rdp',type=bool, default=False, help='Use RDP compression for the curve fitting.')
-    parser.add_argument('--tolerance', type=float, default=0.005, help='Tolerance for the dynamic programming algorithm.')
+    parser.add_argument('--tolerance', type=float, default=0.005, help='Tau tolerance for the dynamic programming algorithm. (default 0.005)')
 
     args = parser.parse_args()
 
 
-    # Pegar os pontos
+    # Get the points
     points = np.loadtxt(args.input_file, delimiter=' ')  # Adjust delimiter if needed
     X = points[:, 0]
     Y = points[:, 1]
@@ -33,7 +33,7 @@ def main():
     P = np.column_stack((X, Y))
 
 
-    # --- Código inicial ---
+    # --- Initial Code ---
     Bezier = BezierCurveFitter(P)
 
     Bezier.rdp(args.epsilon, [0, len(P) - 1])

@@ -9,17 +9,17 @@ from src.bezierCurveFitter import BezierCurveFitter
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize the evolution of a Bezier curve fitting process.')
-    parser.add_argument('--window_size', type=int, default=5, help='Size of the sliding window for tangent calculation.')
-    parser.add_argument('--num_steps', type=int, default=10, help='Number of steps for the fitting process.')
+    parser.add_argument('--window_size', type=int, default=5, help='Size of the sliding window for tangent calculation. (Default 5)')
+    parser.add_argument('--num_steps', type=int, default=10, help='Number of steps for the fitting process. (Default 10)')
     parser.add_argument('--input_file', type=str, default='examples/C.txt', help='Path to the input file containing points.')
     parser.add_argument('--input_error', type=str, default='', help='Path to the input file containing error matrix.')
-    parser.add_argument('--epsilon', type=float, default=1, help='Epsilon value for the RDP algorithm.')
-    parser.add_argument('--tolerance', type=float, default=0.005, help='Tolerance for the dynamic programming algorithm.')
+    parser.add_argument('--epsilon', type=float, default=1, help='Epsilon value for the RDP algorithm (default 1)')
+    parser.add_argument('--tolerance', type=float, default=0.005, help='Tau tolerance for the dynamic programming algorithm. (default 0.005)')
 
     args = parser.parse_args()
 
 
-    # Pegar os pontos
+    # Get the points
     points = np.loadtxt(args.input_file, delimiter=' ')  # Adjust delimiter if needed
     X = points[:, 0]
     Y = points[:, 1]
@@ -27,7 +27,7 @@ def main():
     P = np.column_stack((X, Y))
 
 
-    # --- Código inicial ---
+    # --- Initial Code ---
     Bezier = BezierCurveFitter(P)
 
 
@@ -97,8 +97,6 @@ def main():
             x, y = Bezier.points[i]
             dx, dy = Bezier.tangent_points[i]
             ax.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1, color='blue', label='Tangente' if i == 0 else "")
-
-        #ax.plot(X[Bezier.knots_idx], Y[Bezier.knots_idx], 'o', label='Pontos do RDP', color='blue')
 
         ax.set_title(f'ε = {args.epsilon:.2f}')
         ax.plot(points_from_knots_bezier[:, 0], points_from_knots_bezier[:, 1], label='Pontos da curva', color='red')
