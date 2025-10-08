@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--output_bezier', type=str, default='outputs/S_bezier.txt', help='Path to save the Bezier curves.')
     parser.add_argument('--epsilon', type=float, default=2, help='Epsilon value for the RDP algorithm. (default 2)')
     parser.add_argument('--disable_rdp',type=bool, default=False, help='Use RDP compression for the curve fitting.')
-    parser.add_argument('--tolerance', type=float, default=0.005, help='Tau tolerance for the dynamic programming algorithm. (default 0.005)')
+    parser.add_argument('--tau_tolerance', type=float, default=0.005, help='Tau tolerance for the dynamic programming algorithm. (default 0.005)')
 
     args = parser.parse_args()
 
@@ -60,7 +60,7 @@ def main():
     else:
         Bezier.error_matrix = np.load(args.input_error)
 
-    Bezier.get_knots(args.tolerance)
+    Bezier.get_knots(args.tau_tolerance)
 
     points_from_knots_bezier = []
     bezier_curves = []

@@ -14,7 +14,7 @@ def main():
     parser.add_argument('--input_file', type=str, default='examples/C.txt', help='Path to the input file containing points.')
     parser.add_argument('--input_error', type=str, default='', help='Path to the input file containing error matrix.')
     parser.add_argument('--epsilon', type=float, default=1, help='Epsilon value for the RDP algorithm (default 1)')
-    parser.add_argument('--tolerance', type=float, default=0.005, help='Tau tolerance for the dynamic programming algorithm. (default 0.005)')
+    parser.add_argument('--tau_tolerance', type=float, default=0.005, help='Tau tolerance for the dynamic programming algorithm. (default 0.005)')
 
     args = parser.parse_args()
 
@@ -33,7 +33,7 @@ def main():
 
     # Sliders
     ax_slider_tolerance = plt.axes([0.2, 0.1, 0.65, 0.03])
-    slider_tolerance = Slider(ax_slider_tolerance, 'τ', 0.0, 5.0, valinit=args.tolerance, valstep=0.01)
+    slider_tolerance = Slider(ax_slider_tolerance, 'τ', 0.0, 5.0, valinit=args.tau_tolerance, valstep=0.01)
 
     
     fig, ax = plt.subplots()
