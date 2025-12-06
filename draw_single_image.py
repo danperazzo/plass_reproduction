@@ -69,13 +69,13 @@ def main():
         idx = Bezier.final_knots_idx[i]
         next_idx = Bezier.final_knots_idx[i + 1]
         if np.array_equal(Bezier.tangent_points[idx], np.array([0, 0])) and np.array_equal(Bezier.tangent_points[next_idx], np.array([0, 0])):
-            curve_bezier = Bezier.fit_directly_bezier(P[idx:next_idx + 1], steps, no_fixed_endpoints=False)
+            curve_bezier = Bezier.fit_directly_bezier([idx, next_idx], steps, no_fixed_endpoints=False)
         elif np.array_equal(Bezier.tangent_points[idx], np.array([0, 0])):
-            curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(P[idx:next_idx + 1], steps, Bezier.tangent_points[next_idx], False)
+            curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient([idx, next_idx], steps, Bezier.tangent_points[next_idx], False)
         elif np.array_equal(Bezier.tangent_points[next_idx], np.array([0, 0])):
-            curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(P[idx:next_idx + 1], steps, Bezier.tangent_points[idx], True)
+            curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient([idx, next_idx], steps, Bezier.tangent_points[idx], True)
         else:
-            curve_bezier, _ = Bezier.fit_fixed_bezier(P[idx:next_idx + 1], steps, Bezier.tangent_points[idx], Bezier.tangent_points[next_idx])
+            curve_bezier, _ = Bezier.fit_fixed_bezier([idx, next_idx], steps, Bezier.tangent_points[idx], Bezier.tangent_points[next_idx])
         bezier_curves.append(curve_bezier)
         curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
         points_from_knots_bezier.append(curve_points)

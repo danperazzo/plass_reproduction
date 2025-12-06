@@ -2,92 +2,160 @@ import numpy as np
 import math
 from tqdm import tqdm
 
-from src.utils import solve_linear_regression_fixed_points_and_gradient, solve_linear_regression_one_tangent, encontrar_bezier_otima
+from src.utils import (
+    solve_linear_regression_fixed_points_and_gradient,
+    solve_linear_regression_one_tangent,
+    fit_bezier
+)
 
 class BezierCurveFitter:
     """Handles the fitting of Bezier curves to point sets."""
 
     def __init__(self, P, max_iterations=21):
+        # Maximum number of Newton steps allowed for reparametrization
         self.MAX_ITERATIONS = max_iterations
 
-        self.d1 = np.array([[-3, 3, 0, 0],
-                            [ 0,-3, 3, 0],
-                            [ 0, 0,-3, 3]])
-        self.d2 = np.array([[ 6,-12, 6, 0],
-                            [ 0, 6,-12, 6]])
+        # Derivative matrices for cubic Bézier curves
+        # These allow evaluating dB/dt and d²B/dt² linearly
+        self.d1 = np.array([
+            [-3, 3, 0, 0],
+            [0, -3, 3, 0],
+            [0, 0, -3, 3]
+        ])
+        self.d2 = np.array([
+            [6, -12, 6, 0],
+            [0, 6, -12, 6]
+        ])
 
+        # Original ordened list of points
         self.points = P
-        self.T = self.initialize_T(P)
+        self.T, self.dist = self.initialize_T(P)
 
 
     def initialize_T(self, P):
+        """
+        Creates an initial chord-length parameterization.
+
+        This gives a reasonable starting point for Newton updates.
+
+        Parameters:
+            P (ndarray): Ordered sample points of the curve.
+
+        Returns:
+            T (ndarray): Parameter values normalized to [0, 1].
+            d (float): Total chord-length distance from first to last point.
+        """
         T = [0.0]
         s = 0.0
-
         n = len(P)
 
         for i in range(1, n):
             s += np.linalg.norm(P[i] - P[i-1])
             T.append(s)
 
-        # T final
+        # d is the direct distance from last point to first point
         if n > 1:
+            d = np.linalg.norm(P[-1] - P[0])
             T = np.array(T) / s
-        
-        return T
+        else:
+            d = 0.0
+
+        return T, d
     
+
+    def get_segment_points(self, left, right):
+        if left <= right:
+            return self.points[left:right+1]
+        return np.concatenate([self.points[left:], self.points[:right+1]], axis=0)
+
+    def get_segment_T(self, left, right):
+        if left <= right:
+            T_global = self.T[left:right+1]
+        else:
+            T_global = np.concatenate([
+                self.T[left:], 
+                self.T[:right+1] + self.T[-1] + 1  # ou self.dist + 1
+            ])
+        return (T_global - T_global[0]) / (T_global[-1] - T_global[0])
+        
 
     def construct_matrix_T(self, t, n):
-        n_degree_matrix = np.vstack([math.comb(n, k) * ((1-t)**(n-k)) * (t**k) for k in range(n+1)]).T
-        return n_degree_matrix
-    
+        """
+        Builds the Bernstein basis matrix of degree n.
+        """
+        return np.vstack([
+            math.comb(n, k) * ((1 - t)**(n - k)) * (t**k)
+            for k in range(n + 1)
+        ]).T
+
 
     def update_T(self, P, T, coefficients):
+        """
+        Refines T via Newton iterations.
+
+        Notes:
+            - Stops early if updates become too small.
+            - Helps maintain a roughly uniform parametrization.
+        """
         error_old = 1
         error = 0
-        num_iterations = 0
+        iterations = 0
 
-        while (abs(error - error_old) > 1e-7) and (num_iterations < self.MAX_ITERATIONS):
+        while abs(error - error_old) > 1e-7 and iterations < self.MAX_ITERATIONS:
             T_old = T
             T = self.compute_step_newton(P, T, coefficients)
+
             error_old = error
             error = np.sum((T - T_old)**2)
-            num_iterations += 1
+            iterations += 1
 
         return T
-    
+
 
     def compute_step_newton(self, P, T, coefficients):
-        
+        """
+        Performs a single Newton step for reparametrization.
+        """
+
+        # Control points of the derivative curves B'(t) and B''(t)
         d1_bezier = self.d1 @ coefficients
         d2_bezier = self.d2 @ coefficients
 
+        # Basis matrices for evaluating B(t), B'(t), B''(t)
         T_cubic = self.construct_matrix_T(T, 3)
-        T_quad = self.construct_matrix_T(T, 2)
+        T_quad  = self.construct_matrix_T(T, 2)
         T_linear = self.construct_matrix_T(T, 1)
 
+        # Evaluate Bézier curve and its derivatives
         P1 = (coefficients.T @ T_cubic.T).T
         P2 = (d1_bezier.T @ T_quad.T).T
         P3 = (d2_bezier.T @ T_linear.T).T
 
+        # Numerator and denominator of Newton-Raphson update
         f = np.sum((P1 - P) * P2)
         d1_f = np.sum(P2**2 + (P1 - P) * P3)
 
-        epsilon = 1e-7
-        if np.abs(d1_f) < epsilon:
-            d1_f = epsilon
+        # Robustness against flat derivatives
+        if abs(d1_f) < 1e-7:
+            d1_f = 1e-7
 
+        # Newton-Raphson update
         T -= f / d1_f
 
-        T_min, T_max = np.min(T), np.max(T)
-        if T_max != T_min:
-            T = (T - T_min) / (T_max - T_min)
+        # Normalize T to keep it within a valid range
+        Tmin, Tmax = np.min(T), np.max(T)
+        if Tmax != Tmin:
+            T = (T - Tmin) / (Tmax - Tmin)
         else:
-            T = T - T_min
+            T = T - Tmin
 
         return T
-    
-    def solve_linear_regression_fixed_points(self,points, matrix_t):
+
+
+    ###############################################################
+    # Basic linear regression solvers
+    ###############################################################
+    def solve_linear_regression_fixed_points(self, points, matrix_t):
         initial_point = points[0:1,:]
         final_point = points[-1:,:]
 
@@ -97,394 +165,395 @@ class BezierCurveFitter:
         matrix_t_no_endpoints = matrix_t[:, 1:-1]
 
         points_translated = points - factor_final_point - factor_initial_point
-        coeficients_not_fixed = self.solve_linear_regression(points_translated, matrix_t_no_endpoints)
+        coef_not_fixed = self.solve_linear_regression(points_translated, matrix_t_no_endpoints)
 
-        final_coefficients = np.vstack([initial_point, coeficients_not_fixed, final_point])
+        return np.vstack([initial_point, coef_not_fixed, final_point])
 
-        return final_coefficients 
 
     def solve_linear_regression(self, P, matrix_t):
         A = matrix_t.T @ matrix_t
         b = matrix_t.T @ P
 
         if np.linalg.matrix_rank(A) == A.shape[0]:
-            coefficients = np.linalg.solve(A, b)
+            return np.linalg.solve(A, b)
         else:
-            coefficients, *_ = np.linalg.lstsq(matrix_t, P, rcond=None)
-
-        return coefficients
+            return np.linalg.lstsq(matrix_t, P, rcond=None)[0]
 
     
-    def fit_directly_bezier(self, P, num_steps, no_fixed_endpoints=True, return_T=False):
+    def fit_directly_bezier(self, interval, num_steps, no_fixed_endpoints=True, return_T=False):
+        """
+        Fits a cubic Bézier curve to the given points without enforcing endpoint
+        tangent constraints.
+
+        Parameters:
+            interval (list or tuple): Interval defining the domain on which the curve is evaluated.
+            num_steps (int): Number of LS + reparametrization iterations.
+            no_fixed_endpoints (bool): If False, forces interpolation of endpoints.
+            return_T (bool): If True, returns both coefficients and T.
+
+        Returns:
+            ndarray or (ndarray, ndarray): Bézier control points (and T if requested).
+        """
+
+        left, right = interval
+        P = self.get_segment_points(left, right)
+
+        # Special case: exactly 2 points → simple linear Bézier
         if P.shape[0] == 2:
-            print("Fitting directly Bezier with 2 points")
-            P_1 = P[0] + (P[1] - P[0]) / 3
-            P_2 = P[0] + 2*(P[1] - P[0]) / 3
+            P1 = P[0] + (P[1] - P[0]) / 3
+            P2 = P[0] + 2 * (P[1] - P[0]) / 3
+            curve = np.array([P[0], P1, P2, P[1]])
 
-            if return_T:
-                return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
-            else:
-                return np.array([P[0], P_1, P_2, P[1]])
+            T = self.get_segment_T(left, right)
+
+            return (curve, T) if return_T else curve
+
+        # Special case: 3 points → use quadratic midpoint relationship
         elif P.shape[0] == 3:
-            print("Fitting directly Bezier with 3 points")
-            # Se você quer garantir que passa por P[1] no parâmetro t calculado:
-            T = self.initialize_T(P)
-            t = T[1]  # parâmetro do ponto médio
-            
-            # Ajustar os pesos baseado no t real
-            # Para uma quadrática que passa por P[1] em t:
-            # Q1 = (P[1] - (1-t)²*P[0] - t²*P[2]) / (2*t*(1-t))
-            
-            if abs(2*t*(1-t)) > 1e-10:
-                Q1 = (P[1] - (1-t)**2*P[0] - t**2*P[2]) / (2*t*(1-t))
-                P_1 = (1/3)*P[0] + (2/3)*Q1
-                P_2 = (2/3)*Q1 + (1/3)*P[2]
-            else:
-                # Fallback para sua solução original
-                P_1 = P[0] + 2*(P[1] - P[0]) / 3
-                P_2 = P[2] + 2*(P[1] - P[2]) / 3
-            
-            if return_T:
-                return np.array([P[0], P_1, P_2, P[2]]), T
-            else:
-                return np.array([P[0], P_1, P_2, P[2]])
+            T = self.get_segment_T(left, right)
+            t = T[1]
 
-        T  = self.initialize_T(P)
+            if abs(2 * t * (1 - t)) > 1e-10:
+                # Compute Q1 (quadratic intermediate point)
+                Q1 = (P[1] - (1 - t)**2 * P[0] - t**2 * P[2]) / (2 * t * (1 - t))
+                P1 = (1/3) * P[0] + (2/3) * Q1
+                P2 = (2/3) * Q1 + (1/3) * P[2]
+            else:
+                # Degenerate fallback
+                P1 = P[0] + 2 * (P[1] - P[0]) / 3
+                P2 = P[2] + 2 * (P[1] - P[2]) / 3
 
-        for i in range(num_steps):
+            curve = np.array([P[0], P1, P2, P[2]])
+            return (curve, T) if return_T else curve
+
+        # General case: alternating LS + T refinement
+        T = self.get_segment_T(left, right)
+
+        for _ in range(num_steps):
             matrix_t = self.construct_matrix_T(T, 3)
 
             if no_fixed_endpoints:
-                bezier_coefficients = self.solve_linear_regression(P, matrix_t)
+                bezier_coeffs = self.solve_linear_regression(P, matrix_t)
+            else:
+                bezier_coeffs = self.solve_linear_regression_fixed_points(P, matrix_t)
 
-            else: 
-                bezier_coefficients = self.solve_linear_regression_fixed_points(P, matrix_t)
-            T = self.update_T(P, T, bezier_coefficients)
+            T = self.update_T(P, T, bezier_coeffs)
 
-        if return_T:
-            return bezier_coefficients, T
-
-        return bezier_coefficients
-    
-
-    def fit_fixed_bezier_single_gradient(self, P, num_steps, gradient, use_left=True):
-        T  = self.initialize_T(P)
+        return (bezier_coeffs, T) if return_T else bezier_coeffs
 
 
+    def fit_fixed_bezier_single_gradient(self, interval, num_steps, gradient, use_left=True):
+        """
+        Fits a cubic Bézier curve enforcing a tangent direction at only one endpoint.
+
+        Parameters:
+            interval (list or tuple): Interval defining the domain on which the curve is evaluated.
+            num_steps (int): Iteration count for LS + update_T.
+            gradient (array-like): Tangent direction to enforce.
+            use_left (bool): If True, fix tangent at left endpoint.
+
+        Returns:
+            (coeffs, T): Fitted Bézier control points and updated parameterization.
+        """
+        left, right = interval
+        P = self.get_segment_points(left, right)
+
+        T = self.get_segment_T(left, right)
+
+        # Handling very small sets separately keeps the logic clean
         if P.shape[0] == 2:
             tangent = np.array(gradient) / np.linalg.norm(gradient)
-            
+
             if use_left:
-                # Tangente esquerda fixa
-                # P1 = P[0] + alpha * tangent (alpha a determinar)
-                # P2 livre, mas vamos colocá-lo alinhado com P1-P[1]
-                
-                # Estimar alpha baseado na distância entre pontos
-                dist = np.linalg.norm(P[1] - P[0])
-                alpha = dist / 3  # Estimativa inicial
-                
+                d = np.linalg.norm(P[1] - P[0])
+                alpha = d / 3
                 P1 = P[0] + alpha * tangent
-                # P2 na linha entre P1 e P[1], mais próximo de P[1]
                 P2 = P1 + (2/3) * (P[1] - P1)
             else:
-                # Tangente direita fixa
-                # P2 = P[1] - beta * tangent (beta a determinar)
-                # P1 livre, mas vamos colocá-lo alinhado com P[0]-P2
-                
-                dist = np.linalg.norm(P[1] - P[0])
-                beta = dist / 3
-                
+                d = np.linalg.norm(P[1] - P[0])
+                beta = d / 3
                 P2 = P[1] - beta * tangent
-                # P1 na linha entre P[0] e P2, mais próximo de P[0]
                 P1 = P[0] + (1/3) * (P2 - P[0])
-            
+
             return np.array([P[0], P1, P2, P[1]]), T
-        
+
         elif P.shape[0] == 3:
+            # Enforce interpolation at the middle and tangent at one endpoint.
             tangent = np.array(gradient) / np.linalg.norm(gradient)
-            
-            # Calcular parâmetro t do ponto médio
+
+            # Compute fractional parameter of the middle point
             d1 = np.linalg.norm(P[1] - P[0])
             d2 = np.linalg.norm(P[2] - P[1])
-            t_mid = d1 / (d1 + d2) if (d1 + d2) > 0 else 0.5
-            
+            t = d1 / (d1 + d2) if (d1 + d2) > 0 else 0.5
+
+            # Bernstein basis for cubic at t
+            B0 = (1 - t)**3
+            B1 = 3 * (1 - t)**2 * t
+            B2 = 3 * (1 - t) * t**2
+            B3 = t**3
+
             if use_left:
-                # C0 = P[0], C3 = P[2]
-                # C1 = P[0] + alpha * tangent (fixo em direção)
-                # C2 = ? (a determinar)
-                
-                # Para Bézier em t_mid: B(t_mid) = P[1]
-                t = t_mid
-                B0 = (1-t)**3
-                B1 = 3*(1-t)**2*t
-                B2 = 3*(1-t)*t**2
-                B3 = t**3
-                
-                # B0*P[0] + B1*(P[0] + alpha*tangent) + B2*C2 + B3*P[2] = P[1]
-                # B1*alpha*tangent + B2*C2 = P[1] - (B0+B1)*P[0] - B3*P[2]
-                
-                # Temos 2 equações (x,y) e 3 incógnitas (alpha, C2_x, C2_y)
-                # Adicionar restrição: C2 na direção P[2]->P[1]
+                # Direction for C2 when left tangent is fixed
                 direction_C2 = P[1] - P[2]
-                if np.linalg.norm(direction_C2) > 0:
-                    direction_C2 = direction_C2 / np.linalg.norm(direction_C2)
-                else:
+                if np.linalg.norm(direction_C2) == 0:
                     direction_C2 = np.array([1, 0])
-                
-                # C2 = P[2] + beta * direction_C2
-                # Substituindo:
-                # B1*alpha*tangent + B2*(P[2] + beta*direction_C2) = target
-                # B1*alpha*tangent + B2*beta*direction_C2 = target - B2*P[2]
-                
-                target = P[1] - (B0+B1)*P[0] - B3*P[2]
-                rhs = target - B2*P[2]
-                
-                # Sistema 2x2: [tangent, direction_C2] * [B1*alpha, B2*beta]' = rhs
-                A = np.column_stack([B1*tangent, B2*direction_C2])
-                params = np.linalg.lstsq(A, rhs, rcond=None)[0]
-                alpha, beta = params
-                
+                else:
+                    direction_C2 /= np.linalg.norm(direction_C2)
+
+                target = P[1] - (B0 + B1) * P[0] - B3 * P[2]
+                rhs = target - B2 * P[2]
+
+                # Solve for alpha, beta s.t. C1 = P0 + α*tangent, C2 = P2 + β*direction_C2
+                A = np.column_stack([B1 * tangent, B2 * direction_C2])
+                alpha, beta = np.linalg.lstsq(A, rhs, rcond=None)[0]
+
                 alpha = max(0.1, abs(alpha))
-                beta = max(0.1, abs(beta))
-                
+                beta  = max(0.1, abs(beta))
+
                 C0 = P[0]
                 C1 = P[0] + alpha * tangent
                 C2 = P[2] + beta * direction_C2
                 C3 = P[2]
-                
+
             else:
-                # Tangente direita fixa
-                # C2 = P[2] - beta * tangent
-                # C1 = ? (a determinar)
-                
-                t = t_mid
-                B0 = (1-t)**3
-                B1 = 3*(1-t)**2*t
-                B2 = 3*(1-t)*t**2
-                B3 = t**3
-                
-                # Direção para C1: P[0]->P[1]
+                # Right tangent fixed
                 direction_C1 = P[1] - P[0]
-                if np.linalg.norm(direction_C1) > 0:
-                    direction_C1 = direction_C1 / np.linalg.norm(direction_C1)
-                else:
+                if np.linalg.norm(direction_C1) == 0:
                     direction_C1 = np.array([1, 0])
-                
-                # C1 = P[0] + alpha * direction_C1
-                # B1*(P[0] + alpha*direction_C1) + B2*(P[2] - beta*tangent) = P[1] - B0*P[0] - B3*P[2]
-                
-                target = P[1] - B0*P[0] - B3*P[2]
-                rhs = target - B1*P[0] - B2*P[2]
-                
-                A = np.column_stack([B1*direction_C1, -B2*tangent])
-                params = np.linalg.lstsq(A, rhs, rcond=None)[0]
-                alpha, beta = params
-                
+                else:
+                    direction_C1 /= np.linalg.norm(direction_C1)
+
+                target = P[1] - B0 * P[0] - B3 * P[2]
+                rhs = target - B1 * P[0] - B2 * P[2]
+
+                A = np.column_stack([B1 * direction_C1, -B2 * tangent])
+                alpha, beta = np.linalg.lstsq(A, rhs, rcond=None)[0]
+
                 alpha = max(0.1, abs(alpha))
-                beta = max(0.1, abs(beta))
-                
+                beta  = max(0.1, abs(beta))
+
                 C0 = P[0]
                 C1 = P[0] + alpha * direction_C1
                 C2 = P[2] - beta * tangent
                 C3 = P[2]
-            
+
             return np.array([C0, C1, C2, C3]), T
-            
 
         grad_x = [gradient[0], gradient[0]]
         grad_y = [gradient[1], gradient[1]]
 
-        for i in range(num_steps):
-            bezier_coefficients = solve_linear_regression_one_tangent(T, P, grad_x, grad_y, use_left=use_left)
-            T = self.update_T(P, T, bezier_coefficients)
+        for _ in range(num_steps):
+            coeffs = solve_linear_regression_one_tangent(T, P, grad_x, grad_y, use_left=use_left)
+            T = self.update_T(P, T, coeffs)
 
-        return bezier_coefficients, T
+        return coeffs, T
 
-    def fit_fixed_bezier(self, P, num_steps, gradient_left, gradient_right):
+
+    def fit_fixed_bezier(self, interval, num_steps, gradient_left, gradient_right):
+        """
+        Fits a Bézier enforcing tangents at both endpoints.
+        """
+        left, right = interval
+        P = self.get_segment_points(left, right)
 
         if P.shape[0] == 2:
-            P_1 = P[0] + (P[1] - P[0]) / 3
-            P_2 = P[0] + 2*(P[1] - P[0]) / 3
+            P1 = P[0] + (P[1] - P[0]) / 3
+            P2 = P[0] + 2 * (P[1] - P[0]) / 3
+            T = self.get_segment_T(left, right)
+            return np.array([P[0], P1, P2, P[1]]), T
 
-            return np.array([P[0], P_1, P_2, P[1]]), self.initialize_T(P)
+        T = self.get_segment_T(left, right)
 
-        T  = self.initialize_T(P)
+        for _ in range(num_steps):
+            coeffs = fit_bezier(P, T, gradient_left, gradient_right)
+            T = self.update_T(P, T, coeffs)
 
-        for i in range(num_steps):
-            bezier_coefficients = encontrar_bezier_otima(P, T, gradient_left, gradient_right)
-            T = self.update_T(P, T, bezier_coefficients)
+        return coeffs, T
 
-        return bezier_coefficients, T
-    
 
     def extract_points_bezier(self, coefficients, n=50):
+        """
+        Samples n points along the Bézier curve.
+
+        Returns:
+            points (ndarray), T (ndarray)
+        """
         T = np.linspace(0, 1, n)
-        
         T_cubic = self.construct_matrix_T(T, 3)
-
         points = T_cubic @ coefficients
-
         return points, T
-    
+
 
     def extract_tangent_of_bezier(self, coefficients, T):
+        """
+        Computes tangents B'(T) at given parameter(s).
+        """
         d1_bezier = self.d1 @ coefficients
-        
         T_quad = self.construct_matrix_T(T, 2)
-        
-        tangents = T_quad @ d1_bezier
+        return T_quad @ d1_bezier
 
-        return tangents
 
-    
     def sliding_window(self, num_steps, window_size=5):
+        """
+        Estimates local tangents along the curve by fitting Bézier curves
+        to sliding windows of sample points.
+
+        Parameters:
+            num_steps (int): Iterations for each local Bézier fit.
+            window_size (int): Half-size of the sliding window.
+
+        Notes:
+            - For smooth regions (no corners), windows wrap around the curve.
+            - For segments between corners, windows are restricted to that interval.
+            - The center of the window determines the tangent evaluation point.
+
+        Sets:
+            self.fitted_curves  : list of local Bézier control points
+            self.tangent_points : tangent vectors at each original sample point
+        """
         n = len(self.points)
         c = len(self.corners)
         fitted_curves = []
         tangent_points = []
 
         if c == 0:
+            # Smooth case: treat as closed loop
             for i in tqdm(range(n), desc="Fitting Bezier curves"):
 
-                left_interval = (i - window_size) % n
-                right_interval = (i + window_size) % n + 1
+                left_i  = (i - window_size) % n
+                right_i = (i + window_size) % n + 1
+                center  = window_size
 
-                center = window_size
+                curve, T_local = self.fit_directly_bezier([left_i, right_i], num_steps, return_T=True)
+                T_center = T_local[center]
 
-                if left_interval < right_interval:
-                    P_window = self.points[left_interval:right_interval].copy()
-                else:
-                    P_window = np.concatenate([self.points[left_interval:].copy(), self.points[:right_interval].copy()], axis=0)
+                fitted_curves.append(curve)
+                tangent_points.append(
+                    self.extract_tangent_of_bezier(curve, T_center)[0]
+                )
 
-                fitted_curve, T_window = self.fit_directly_bezier(P_window, num_steps, return_T=True)
-
-                T_center = T_window[center]
-                
-                fitted_curves.append(fitted_curve)
-                tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
         else:
-            print(f"Tem {c} corners")
+            # Corner-aware mode: treat each segment independently
             for i in tqdm(range(c), desc="Fitting Bezier curves"):
-                left = self.knots_idx[self.corners[i]]
-                right = self.knots_idx[self.corners[(i+1) % c]]
+                left  = self.knots_idx[self.corners[i]]
+                right = self.knots_idx[self.corners[(i + 1) % c]]
 
                 if i != c - 1:
                     m = len(self.points[left:right + 1])
                 else:
+                    # Wrap last corner to first
                     m = len(self.points[left:]) + len(self.points[:right + 1])
 
-                # Tangente do corner
-                tangent_points.append([0, 0])
+                tangent_points.append([0, 0])  # Explicit tangent placeholder at corner
 
                 for j in range(1, m - 1):
-                    # Não queremos problema caso left > right
+
                     if left < right:
-                        left_interval = max(left, left + j - window_size)
-                        right_interval = min(right, right - (m - 1 - j) + window_size) + 1
+                        li = max(left, left + j - window_size)
+                        ri = min(right, right - (m - 1 - j) + window_size) + 1
                     else:
-                        left_interval = (max(left, left + j - window_size) % n)
-                        right_interval = (min(right, right - (m - 1 - j) + window_size) % n) + 1
+                        # Wrap-around segment
+                        li = (max(left, left + j - window_size) % n)
+                        ri = (min(right, right - (m - 1 - j) + window_size) % n) + 1
 
-                    if left_interval != left:
-                        center = window_size
-                    else:
-                        center = j
+                    center = window_size if li != left else j
 
-                    if left_interval < right_interval:
-                        P_window = self.points[left_interval:right_interval].copy()
-                    else:
-                        P_window = np.concatenate([self.points[left_interval:].copy(), self.points[:right_interval].copy()], axis=0)
-            
-                    fitted_curve, T_window = self.fit_directly_bezier(P_window, num_steps, return_T=True)
+                    curve, T_local = self.fit_directly_bezier([li, ri], num_steps, return_T=True)
+                    T_center = T_local[center]
 
-                    T_center = T_window[center]
+                    fitted_curves.append(curve)
+                    tangent_points.append(
+                        self.extract_tangent_of_bezier(curve, T_center)[0]
+                    )
 
-                    fitted_curves.append(fitted_curve)
-                    tangent_points.append(self.extract_tangent_of_bezier(fitted_curve, T_center)[0])
-            tangent_points = tangent_points[-self.knots_idx[self.corners[0]]:] + tangent_points[:-self.knots_idx[self.corners[0]]]
-                
-        tangent_points = np.array(tangent_points)/20
+            tangent_points = (
+                tangent_points[-self.knots_idx[self.corners[0]]:] +
+                tangent_points[:-self.knots_idx[self.corners[0]]]
+            )
+
         self.fitted_curves = fitted_curves
-        self.tangent_points = tangent_points
-    
+        self.tangent_points = np.array(tangent_points) / 20
+
 
     def do_rdp(self, epsilon, interval):
         """
-        Ramer-Douglas-Peucker algorithm to simplify a curve.
+        Core Ramer–Douglas–Peucker simplification step.
 
         Parameters:
-            points (numpy.ndarray): A 2D array of points (shape: [n, 2]).
-            epsilon (float): The distance threshold for simplification.
-            method (str): Method to choose the subdivision point. 
-                        "max" for maximum error, "middle" for the middle point.
+            epsilon (float): Maximum allowed deviation from the line segment.
+            interval (list): [start_index, end_index] in the point sequence.
 
         Returns:
-            list: A simplified list of indexes.
+            list: Indices of points to keep in this interval.
         """
-        # Find the point with the maximum distance from the line connecting the first and last points
         start, end = self.points[interval[0]], self.points[interval[1]]
 
+        # If endpoints coincide, simply measure distance to single reference
         if np.array_equal(start, end):
-            distances = np.linalg.norm(self.points[interval[0]:interval[1] + 1] - start, axis=1)
+            distances = np.linalg.norm(
+                self.points[interval[0]:interval[1] + 1] - start,
+                axis=1
+            )
         else:
-            line_vec = end - start
-            line_len = np.linalg.norm(line_vec)
-            if line_len == 0:
-                line_len = 1  # Avoid division by zero
+            line = end - start
+            L = np.linalg.norm(line)
+            if L == 0:
+                L = 1
 
-            # Compute perpendicular distances
-            distances = np.abs(np.cross(self.points[interval[0]:interval[1] + 1] - start, line_vec) / line_len)
+            # Perpendicular distance to segment
+            distances = np.abs(
+                np.cross(self.points[interval[0]:interval[1] + 1] - start, line) / L
+            )
 
-        # Find the index of the point with the maximum distance
-        max_idx = np.argmax(distances)
-        max_dist = distances[max_idx]
-        
-        # If the maximum distance (or middle point distance) is greater than epsilon, recursively simplify
+        k = np.argmax(distances)
+        max_dist = distances[k]
+
         if max_dist > epsilon:
-            # Recursively simplify the two segments
-            left = self.do_rdp(epsilon, [interval[0], interval[0] + max_idx])
-            right = self.do_rdp(epsilon, [interval[0] + max_idx, interval[1]])
-
-            # Combine the results, excluding the duplicate indexes at the junction
+            left = self.do_rdp(epsilon, [interval[0], interval[0] + k])
+            right = self.do_rdp(epsilon, [interval[0] + k, interval[1]])
             return left[:-1] + right
         else:
-            # If no point is farther than epsilon, return the index of the endpoints
             return interval
-        
+
 
     def rdp(self, epsilon, interval):
+        """Wrapper for do_rdp. Stores final knot indices."""
         self.knots_idx = self.do_rdp(epsilon, interval)
 
 
-    # Corners são indices de knots
     def get_corners(self, cos=math.cos((3 * math.pi) / 4)):
-        k = len(self.knots_idx)
+        """
+        Detects sharp corners by comparing angles at each knot.
 
+        Parameters:
+            cos (float): Cosine threshold for angle sharpness.
+
+        Sets:
+            self.corners (list): Indices of corner knots.
+        """
+        k = len(self.knots_idx)
         corners = []
 
         for i in range(k):
-
-            previous_idx = self.knots_idx[i - 1]
-            current_idx = self.knots_idx[i]
+            prev_idx = self.knots_idx[i - 1]
+            cur_idx  = self.knots_idx[i]
             next_idx = self.knots_idx[(i + 1) % k]
 
-            if np.array_equal(self.points[previous_idx], self.points[current_idx]):
-                previous_idx = self.knots_idx[(i - 2) % k]
-            elif np.array_equal(self.points[next_idx], self.points[current_idx]):
+            # Handle degenerate repeated points
+            if np.array_equal(self.points[prev_idx], self.points[cur_idx]):
+                prev_idx = self.knots_idx[(i - 2) % k]
+            elif np.array_equal(self.points[next_idx], self.points[cur_idx]):
                 next_idx = self.knots_idx[(i + 2) % k]
 
+            PC = self.points[prev_idx] - self.points[cur_idx]
+            NC = self.points[next_idx] - self.points[cur_idx]
 
-            # P: previus / C: current / N: next
-            PC = self.points[previous_idx] - self.points[current_idx]
-            NC = self.points[next_idx] - self.points[current_idx]
+            magPC = np.linalg.norm(PC)
+            magNC = np.linalg.norm(NC)
 
-            mag_PC = np.linalg.norm(PC)
-            mag_NC = np.linalg.norm(NC)
+            angle_cos = np.dot(PC, NC) / (magPC * magNC)
 
-            cos_knot = np.dot(PC, NC) / (mag_PC * mag_NC)
-
-
-            if cos_knot > cos:
+            if angle_cos > cos:
                 corners.append(i)
 
         self.corners = corners
@@ -495,42 +564,70 @@ class BezierCurveFitter:
         bezier_points = matrix_t @ coefficients
         distances = np.linalg.norm(P - bezier_points, axis=1)
         return distances
-    
 
-    def make_error_matrix(self, steps = 5):
+
+    def make_error_matrix(self, steps=5):
+        """
+        Builds the matrix of fitting errors for all pairs of knot indices.
+
+        Each entry (i, j) is the squared fitting error of the Bézier curve
+        approximating the segment from knot i to knot j.
+
+        Parameters:
+            steps (int): Iteration count for each Bézier fit.
+
+        Sets:
+            self.error_matrix (ndarray)
+        """
         m = len(self.knots_idx)
-
-        error_matrix = np.zeros((m, m), dtype=float)
+        E = np.zeros((m, m), dtype=float)
 
         for i in tqdm(range(m), desc="Creating the error matrix"):
-            left = self.knots_idx[i]
-            gradient_left = self.tangent_points[left]
+            left_idx = self.knots_idx[i]
+            grad_left = self.tangent_points[left_idx]
 
             for j in range(i + 1, m):
-                # Todas as curvas de bezier de P_i até todos os próximos pontos
-                right = self.knots_idx[j]
-                gradient_right = self.tangent_points[right]
+                right_idx = self.knots_idx[j]
+                grad_right = self.tangent_points[right_idx]
 
-                if np.array_equal(gradient_left, np.array([0, 0])) and np.array_equal(gradient_right, np.array([0, 0])):
-                    coefficients, T_new = self.fit_directly_bezier(self.points[left:right+1], steps, no_fixed_endpoints=False, return_T=True)
-                elif np.array_equal(gradient_left, np.array([0, 0])):
-                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(self.points[left:right+1], steps, gradient_right, use_left=False)
-                elif np.array_equal(gradient_right, np.array([0, 0])):
-                    coefficients, T_new = self.fit_fixed_bezier_single_gradient(self.points[left:right+1], steps, gradient_left, use_left=True)
+                pts = self.points[left_idx:right_idx + 1]
+
+                # Choose fitting strategy depending on tangent availability
+                if np.array_equal(grad_left, [0, 0]) and np.array_equal(grad_right, [0, 0]):
+                    coeffs, T_new = self.fit_directly_bezier(
+                        [left_idx, right_idx], steps, no_fixed_endpoints=False, return_T=True
+                    )
+                elif np.array_equal(grad_left, [0, 0]):
+                    coeffs, T_new = self.fit_fixed_bezier_single_gradient(
+                        [left_idx, right_idx], steps, grad_right, use_left=False
+                    )
+                elif np.array_equal(grad_right, [0, 0]):
+                    coeffs, T_new = self.fit_fixed_bezier_single_gradient(
+                        [left_idx, right_idx], steps, grad_left, use_left=True
+                    )
                 else:
-                    coefficients, T_new = self.fit_fixed_bezier(self.points[left:right+1], steps, gradient_left, gradient_right)
+                    coeffs, T_new = self.fit_fixed_bezier(
+                        [left_idx, right_idx], steps, grad_left, grad_right
+                    )
 
-                
-                distances = self.bezier_dist(self.points[left:right+1], T_new, coefficients)
-                error_matrix[i, j] = (distances**2).sum() if distances.size > 2 else 0.0
-                
-        
-        self.error_matrix = error_matrix
+                d = self.bezier_dist(pts, T_new, coeffs)
+                E[i, j] = (d**2).sum() if d.size > 2 else 0.0
+
+        self.error_matrix = E
 
 
-    def get_knots(self, tolerance = 0.5):
+    def get_knots(self, tolerance=0.5):
+        """
+        Chooses the optimal subset of knots using dynamic programming.
+
+        Parameters:
+            tolerance (float): Penalty per segment to avoid over-segmentation.
+
+        Sets:
+            self.final_knots      : Coordinates of selected knots
+            self.final_knots_idx  : Indices of selected knots
+        """
         m = len(self.knots_idx)
-
         dp = np.full(m, np.inf)
         prev = np.full(m, -1, dtype=int)
         dp[0] = 0
@@ -542,14 +639,14 @@ class BezierCurveFitter:
                     dp[j] = cost
                     prev[j] = i
 
-        # Backtrack to find indices of kept points
-        indices = []
+        # Backtracking
+        out = []
         cur = m - 1
         while cur != 0:
-            indices.append(self.knots_idx[cur])
+            out.append(self.knots_idx[cur])
             cur = prev[cur]
-        indices.append(0)
-        indices.reverse()
+        out.append(0)
+        out.reverse()
 
-        self.final_knots = np.array([self.points[idx] for idx in indices])
-        self.final_knots_idx = indices
+        self.final_knots = np.array([self.points[idx] for idx in out])
+        self.final_knots_idx = out

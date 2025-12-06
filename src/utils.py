@@ -1,69 +1,53 @@
 import numpy as np
 
 
-def encontrar_bezier_otima(pontos, parametros_t, tangente_inicial, tangente_final):
+import numpy as np
+
+def fit_bezier(points, parameters_t, initial_tangent, final_tangent):
     """
-    Método alternativo que constrói um sistema mais direto.
+    Fits a cubic Bézier curve with fixed endpoints and fixed tangent directions.
     """
-    pontos = np.array(pontos)
-    parametros_t = np.array(parametros_t)
-    tangente_inicial = np.array(tangente_inicial)
-    tangente_final = np.array(tangente_final)
-    
-    # Normalizar as tangentes
-    tangente_inicial = tangente_inicial / np.linalg.norm(tangente_inicial)
-    tangente_final = tangente_final / np.linalg.norm(tangente_final)
-    
-    n = len(pontos)
-    
-    # Construir matriz do sistema
-    # Para cada ponto, temos: B(t_i) = pontos[i]
-    # B(t) = B0(t)P0 + B1(t)P1 + B2(t)P2 + B3(t)P3
-    # onde Bi(t) são as funções base de Bernstein
-    
-    # Como P1 = P0 + α*v1 e P2 = P3 - β*v2:
-    # B(t) = B0(t)P0 + B1(t)(P0 + α*v1) + B2(t)(P3 - β*v2) + B3(t)P3
-    # B(t) = (B0(t) + B1(t))P0 + (B2(t) + B3(t))P3 + B1(t)α*v1 - B2(t)β*v2
-    
-    A = np.zeros((2*n, 2))
-    b = np.zeros(2*n)
-    
-    P0 = pontos[0]
-    P3 = pontos[-1]
-    
-    for i in range(n):
-        t = parametros_t[i]
-        
-        # Funções base de Bernstein
-        B0 = (1-t)**3
-        B1 = 3*(1-t)**2*t
-        B2 = 3*(1-t)*t**2
-        B3 = t**3
-        
-        # Parte conhecida
-        conhecido = (B0 + B1) * P0 + (B2 + B3) * P3
-        
-        # Equações para x
-        A[2*i, 0] = B1 * tangente_inicial[0]
-        A[2*i, 1] = -B2 * tangente_final[0]
-        b[2*i] = pontos[i, 0] - conhecido[0]
-        
-        # Equações para y
-        A[2*i+1, 0] = B1 * tangente_inicial[1]
-        A[2*i+1, 1] = -B2 * tangente_final[1]
-        b[2*i+1] = pontos[i, 1] - conhecido[1]
-    
-    # Resolver por mínimos quadrados
-    x, residuos, rank, s = np.linalg.lstsq(A, b, rcond=None)
-    alpha, beta = x
-    
-    # Garantir valores positivos
-    alpha = abs(alpha)
-    beta = abs(beta)
-    
-    P1 = P0 + alpha * tangente_inicial
-    P2 = P3 - beta * tangente_final
-    
+    points = np.asarray(points)
+    t = np.asarray(parameters_t)
+
+    # Normalize tangent directions
+    v1 = np.asarray(initial_tangent)
+    v2 = np.asarray(final_tangent)
+    v1 /= np.linalg.norm(v1)
+    v2 /= np.linalg.norm(v2)
+
+    P0 = points[0]
+    P3 = points[-1]
+
+    # Compute Bernstein basis functions for cubic Bézier
+    mt = 1 - t
+    B0 = mt**3
+    B1 = 3 * mt**2 * t
+    B2 = 3 * mt * t**2
+    B3 = t**3
+
+    # Known part of the Bézier equation
+    known = (B0 + B1)[:, None] * P0 + (B2 + B3)[:, None] * P3
+    R = points - known  # residuals
+
+    # Build columns corresponding to alpha and beta contributions
+    M0 = B1[:, None] * v1[None, :]  # contribution of alpha along initial tangent
+    M1 = -B2[:, None] * v2[None, :]  # contribution of beta along final tangent
+
+    # Form the 2x2 normal equation
+    ATA = np.array([
+        [np.sum(M0*M0), np.sum(M0*M1)],
+        [np.sum(M0*M1), np.sum(M1*M1)]
+    ])
+    ATb = np.array([np.sum(M0*R), np.sum(M1*R)])
+
+    # Solve for alpha and beta
+    alpha, beta = np.linalg.solve(ATA, ATb)
+
+    # Construct control points
+    P1 = P0 + alpha * v1
+    P2 = P3 - beta * v2
+
     return np.vstack([P0, P1, P2, P3])
 
 

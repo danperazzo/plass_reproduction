@@ -77,13 +77,13 @@ def main():
             gradient_right = Bezier.tangent_points[next_idx]
 
             if np.array_equal(gradient_left, np.array([0, 0])) and np.array_equal(gradient_right, np.array([0, 0])):
-                curve_bezier, _ = Bezier.fit_directly_bezier(Bezier.points[idx:next_idx + 1], steps, no_fixed_endpoints=False, return_T=True)
+                curve_bezier, _ = Bezier.fit_directly_bezier([idx, next_idx], steps, no_fixed_endpoints=False, return_T=True)
             elif np.array_equal(gradient_left, np.array([0, 0])):
-                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(Bezier.points[idx:next_idx + 1], steps, gradient_right, use_left=False)
+                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient([idx, next_idx], steps, gradient_right, use_left=False)
             elif np.array_equal(gradient_right, np.array([0, 0])):
-                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient(Bezier.points[idx:next_idx + 1], steps, gradient_left, use_left=True)
+                curve_bezier, _ = Bezier.fit_fixed_bezier_single_gradient([idx, next_idx], steps, gradient_left, use_left=True)
             else:
-                curve_bezier, _ = Bezier.fit_fixed_bezier(Bezier.points[idx:next_idx + 1], steps, gradient_left, gradient_right)
+                curve_bezier, _ = Bezier.fit_fixed_bezier([idx, next_idx], steps, gradient_left, gradient_right)
 
             ax.scatter(curve_bezier[1:3, 0], curve_bezier[1:3, 1], s=1, color='gray', alpha=0.5)
             curve_points, _ = Bezier.extract_points_bezier(curve_bezier, num_points)
