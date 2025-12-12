@@ -7,48 +7,56 @@ def fit_bezier(points, parameters_t, initial_tangent, final_tangent):
     """
     Fits a cubic Bézier curve with fixed endpoints and fixed tangent directions.
     """
-    points = np.asarray(points)
-    t = np.asarray(parameters_t)
 
-    # Normalize tangent directions
-    v1 = np.asarray(initial_tangent)
-    v2 = np.asarray(final_tangent)
-    v1 /= np.linalg.norm(v1)
-    v2 /= np.linalg.norm(v2)
+    # Convert inputs to contiguous float64 arrays
+    points = np.asarray(points, dtype=np.float64)
+    t = np.asarray(parameters_t, dtype=np.float64)
+    v1 = np.asarray(initial_tangent, dtype=np.float64)
+    v2 = np.asarray(final_tangent, dtype=np.float64)
+
+    v1 = v1 / np.linalg.norm(v1)
+    v2 = v2 / np.linalg.norm(v2)
 
     P0 = points[0]
     P3 = points[-1]
+    n = points.shape[0]
 
-    # Compute Bernstein basis functions for cubic Bézier
-    mt = 1 - t
-    B0 = mt**3
-    B1 = 3 * mt**2 * t
-    B2 = 3 * mt * t**2
-    B3 = t**3
+    # Cubic Bernstein basis
+    mt = 1.0 - t
+    B0 = mt * mt * mt
+    B1 = 3.0 * mt * mt * t
+    B2 = 3.0 * mt * t * t
+    B3 = t * t * t
 
-    # Known part of the Bézier equation
-    known = (B0 + B1)[:, None] * P0 + (B2 + B3)[:, None] * P3
-    R = points - known  # residuals
+    # Known term of the system
+    S1 = B0 + B1
+    S2 = B2 + B3
+    known = S1[:, None] * P0 + S2[:, None] * P3
 
-    # Build columns corresponding to alpha and beta contributions
-    M0 = B1[:, None] * v1[None, :]  # contribution of alpha along initial tangent
-    M1 = -B2[:, None] * v2[None, :]  # contribution of beta along final tangent
+    # Assemble Ax/Ay and Bx/By coefficients
+    A = np.empty((2 * n, 2), dtype=np.float64)
+    A[:n, 0] = B1 * v1[0]
+    A[n:, 0] = B1 * v1[1]
+    A[:n, 1] = -B2 * v2[0]
+    A[n:, 1] = -B2 * v2[1]
 
-    # Form the 2x2 normal equation
-    ATA = np.array([
-        [np.sum(M0*M0), np.sum(M0*M1)],
-        [np.sum(M0*M1), np.sum(M1*M1)]
-    ])
-    ATb = np.array([np.sum(M0*R), np.sum(M1*R)])
+    # Right-hand side vector
+    b = np.empty(2 * n, dtype=np.float64)
+    b[:n] = points[:, 0] - known[:, 0]
+    b[n:] = points[:, 1] - known[:, 1]
 
-    # Solve for alpha and beta
-    alpha, beta = np.linalg.solve(ATA, ATb)
+    # Least-squares solution
+    x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+    alpha, beta = x
 
-    # Construct control points
-    P1 = P0 + alpha * v1
-    P2 = P3 - beta * v2
+    # Control points
+    ctrl = np.empty((4, points.shape[1]), dtype=np.float64)
+    ctrl[0] = P0
+    ctrl[1] = P0 + alpha * v1
+    ctrl[2] = P3 - beta * v2
+    ctrl[3] = P3
 
-    return np.vstack([P0, P1, P2, P3])
+    return ctrl
 
 
 def fit_bezier_linear_one_tangent(t_data, X_data, Y_data,
