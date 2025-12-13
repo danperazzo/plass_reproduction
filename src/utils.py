@@ -1,8 +1,5 @@
 import numpy as np
 
-
-import numpy as np
-
 def fit_bezier(points, parameters_t, initial_tangent, final_tangent):
     """
     Fits a cubic Bézier curve with fixed endpoints and fixed tangent directions.

@@ -3,7 +3,6 @@ import math
 from tqdm import tqdm
 
 from src.utils import (
-    solve_linear_regression_fixed_points_and_gradient,
     solve_linear_regression_one_tangent,
     fit_bezier
 )
